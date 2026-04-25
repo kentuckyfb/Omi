@@ -151,7 +151,9 @@ let mp = {
   channel: null,
   playerId: null,
   pendingRoomSize: 4,
-  presenceNames: {}
+  seatAssignments: {},  // host-managed: clientId → seat index 0-3
+  clientNames: {},      // clientId → display name
+  selectedSeat: null    // host UI: first seat clicked for swap
 };
 
 const elements = {};
@@ -817,6 +819,9 @@ async function connectAbly() {
 function disconnectAbly() {
   if (mp.channel) { try { mp.channel.presence.leave(); mp.channel.detach(); } catch {} mp.channel = null; }
   if (mp.client) { try { mp.client.close(); } catch {} mp.client = null; }
+  mp.seatAssignments = {};
+  mp.clientNames = {};
+  mp.selectedSeat = null;
 }
 
 function setConnectionStatus(status) {
@@ -841,7 +846,9 @@ async function createRoom() {
 
   const myName = getPlayerName();
   savePlayerName(myName);
-  mp.presenceNames = { 0: myName };
+  mp.seatAssignments = { [mp.playerId]: 0 };
+  mp.clientNames    = { [mp.playerId]: myName };
+  mp.selectedSeat   = null;
 
   mp.channel = mp.client.channels.get(`omi-${code}`);
   mp.channel.subscribe('card-play', onRemoteCardPlay);
@@ -871,9 +878,9 @@ async function joinRoom(code) {
 
   const myName = getPlayerName();
   savePlayerName(myName);
-  mp.presenceNames = {};
-  members.forEach(m => { mp.presenceNames[m.data.index] = m.data.name; });
-  mp.presenceNames[myIndex] = myName;
+  mp.clientNames  = { [mp.playerId]: myName };
+  mp.selectedSeat = null;
+  members.forEach(m => { mp.clientNames[m.clientId] = m.data.name; });
 
   gameState.roomCode = code;
   gameState.mode = 'guest';
@@ -884,6 +891,7 @@ async function joinRoom(code) {
   mp.channel.subscribe('card-play', onRemoteCardPlay);
   mp.channel.subscribe('trump-selected', onRemoteTrumpSelected);
   mp.channel.subscribe('round-start', onRoundStart);
+  mp.channel.subscribe('seat-swap', onSeatSwap);
   mp.channel.presence.subscribe('enter', onPresenceEnter);
   mp.channel.presence.subscribe('leave', onPresenceLeave);
 
@@ -895,108 +903,185 @@ async function joinRoom(code) {
   const roomSize = (hostMember && hostMember.data.roomSize) || mp.pendingRoomSize;
 
   showWaitingRoom(code, roomSize);
-  members.forEach(m => addPlayerToWaiting(m.data.index, m.data.name));
-  addPlayerToWaiting(myIndex, myName);
+  members.forEach(m => updateSeatSlot(m.data.index, m.data.name, true));
+  updateSeatSlot(myIndex, myName, true);
 }
 
 // === Waiting Room UI ===
 function showWaitingRoom(code, size) {
-  // Render each character of room code as individual box
   elements.displayRoomCode.innerHTML = code.split('').map(ch =>
     `<div class="room-code-char">${ch}</div>`
   ).join('');
   elements.playerCountMax.textContent = size;
   elements.playerCount.textContent = '0';
-  elements.playersContainer.innerHTML = '';
   elements.btnStartGame.classList.add('hidden');
   elements.waitingText.textContent = 'Waiting for players...';
 
-  if (gameState.mode === 'host') {
-    addPlayerToWaiting(0, getPlayerName());
-    for (let i = 1; i < size; i++) addEmptySlot(i);
-  }
+  const isHost = gameState.mode === 'host';
+  buildTeamGrid(isHost);
+  if (isHost) updateSeatSlot(0, getPlayerName(), true);
 
   showScreen(elements.waitingScreen);
 }
 
-function addPlayerToWaiting(index, name) {
-  const empty = elements.playersContainer.querySelector(`.player-slot.empty[data-index="${index}"]`);
-  if (empty) empty.remove();
-  if (elements.playersContainer.querySelector(`[data-index="${index}"]:not(.empty)`)) return;
-
-  const team = (index % 2) + 1;
-  const slot = document.createElement('div');
-  slot.className = `player-slot team-${team}`;
-  slot.dataset.index = index;
-  slot.innerHTML = `
-    <div class="player-avatar">${name.charAt(0).toUpperCase()}</div>
-    <div class="player-slot-name">${name}</div>
-    <div class="player-slot-team">Team ${team}</div>
+function buildTeamGrid(isHost) {
+  const sw = isHost ? ' swappable' : '';
+  elements.playersContainer.innerHTML = `
+    <div class="team-grid">
+      <div class="team-col">
+        <div class="team-col-label t1-label">Team 1</div>
+        <div class="seat-slot${sw}" id="seat-0"><span class="seat-pos">S</span><span class="seat-name">Bot</span></div>
+        <div class="seat-slot${sw}" id="seat-2"><span class="seat-pos">N</span><span class="seat-name">Bot</span></div>
+      </div>
+      <div class="team-col">
+        <div class="team-col-label t2-label">Team 2</div>
+        <div class="seat-slot${sw}" id="seat-1"><span class="seat-pos">W</span><span class="seat-name">Bot</span></div>
+        <div class="seat-slot${sw}" id="seat-3"><span class="seat-pos">E</span><span class="seat-name">Bot</span></div>
+      </div>
+    </div>
+    ${isHost ? '<p class="swap-hint" id="swap-hint">Select a seat to reassign</p>' : ''}
   `;
-  elements.playersContainer.appendChild(slot);
+  if (isHost) {
+    elements.playersContainer.querySelectorAll('.seat-slot').forEach(el => {
+      el.addEventListener('click', () => onSeatClick(parseInt(el.id.slice(5))));
+    });
+  }
+}
+
+function updateSeatSlot(seat, name, isHuman) {
+  const slot = document.getElementById(`seat-${seat}`);
+  if (!slot) return;
+  slot.querySelector('.seat-name').textContent = name;
+  slot.classList.toggle('occupied', isHuman);
   updateWaitingCount();
 }
 
-function addEmptySlot(index) {
-  const team = (index % 2) + 1;
-  const slot = document.createElement('div');
-  slot.className = `player-slot empty`;
-  slot.dataset.index = index;
-  slot.innerHTML = `
-    <div class="player-avatar">?</div>
-    <div class="player-slot-name">Waiting...</div>
-    <div class="player-slot-team">Team ${team}</div>
-  `;
-  elements.playersContainer.appendChild(slot);
+function onSeatClick(seat) {
+  if (mp.selectedSeat === null) {
+    mp.selectedSeat = seat;
+    document.getElementById(`seat-${seat}`).classList.add('swap-selected');
+    const hint = document.getElementById('swap-hint');
+    if (hint) hint.textContent = 'Now select another seat to swap with';
+  } else if (mp.selectedSeat === seat) {
+    document.getElementById(`seat-${seat}`).classList.remove('swap-selected');
+    mp.selectedSeat = null;
+    const hint = document.getElementById('swap-hint');
+    if (hint) hint.textContent = 'Select a seat to reassign';
+  } else {
+    const seatA = mp.selectedSeat;
+    document.getElementById(`seat-${seatA}`).classList.remove('swap-selected');
+    mp.selectedSeat = null;
+    swapSeats(seatA, seat);
+    const hint = document.getElementById('swap-hint');
+    if (hint) hint.textContent = 'Select a seat to reassign';
+  }
+}
+
+function swapSeats(seatA, seatB) {
+  const slotA = document.getElementById(`seat-${seatA}`);
+  const slotB = document.getElementById(`seat-${seatB}`);
+  if (!slotA || !slotB) return;
+
+  const nameA = slotA.querySelector('.seat-name').textContent;
+  const nameB = slotB.querySelector('.seat-name').textContent;
+  const humanA = slotA.classList.contains('occupied');
+  const humanB = slotB.classList.contains('occupied');
+
+  // Swap display without triggering updateWaitingCount twice
+  slotA.querySelector('.seat-name').textContent = nameB;
+  slotA.classList.toggle('occupied', humanB);
+  slotB.querySelector('.seat-name').textContent = nameA;
+  slotB.classList.toggle('occupied', humanA);
+  updateWaitingCount();
+
+  // Update seatAssignments
+  const entries = Object.entries(mp.seatAssignments);
+  const clientAtA = entries.find(([, s]) => s === seatA)?.[0];
+  const clientAtB = entries.find(([, s]) => s === seatB)?.[0];
+  if (clientAtA) mp.seatAssignments[clientAtA] = seatB;
+  if (clientAtB) mp.seatAssignments[clientAtB] = seatA;
+
+  mp.channel.publish('seat-swap', { seatA, seatB });
+}
+
+function onSeatSwap(msg) {
+  if (msg.clientId === mp.playerId) return;
+  const { seatA, seatB } = msg.data;
+  const slotA = document.getElementById(`seat-${seatA}`);
+  const slotB = document.getElementById(`seat-${seatB}`);
+  if (!slotA || !slotB) return;
+
+  const nameA = slotA.querySelector('.seat-name').textContent;
+  const nameB = slotB.querySelector('.seat-name').textContent;
+  const humanA = slotA.classList.contains('occupied');
+  const humanB = slotB.classList.contains('occupied');
+
+  slotA.querySelector('.seat-name').textContent = nameB;
+  slotA.classList.toggle('occupied', humanB);
+  slotB.querySelector('.seat-name').textContent = nameA;
+  slotB.classList.toggle('occupied', humanA);
 }
 
 function updateWaitingCount() {
-  const filled = elements.playersContainer.querySelectorAll('.player-slot:not(.empty)').length;
+  const filled = elements.playersContainer.querySelectorAll('.seat-slot.occupied').length;
   elements.playerCount.textContent = filled;
 
-  if (gameState.mode === 'host' && filled >= 2) {
-    elements.btnStartGame.classList.remove('hidden');
-    const total = gameState.roomSize;
-    elements.waitingText.textContent = filled >= total
-      ? 'All players ready!'
-      : 'Ready — bots will fill empty slots';
+  if (gameState.mode === 'host') {
+    if (filled >= 2) {
+      elements.btnStartGame.classList.remove('hidden');
+      const total = gameState.roomSize;
+      elements.waitingText.textContent = filled >= total
+        ? 'All players ready!'
+        : 'Ready — bots will fill empty seats';
+    } else {
+      elements.btnStartGame.classList.add('hidden');
+      elements.waitingText.textContent = 'Waiting for players...';
+    }
   }
 }
 
 function onPresenceEnter(member) {
   if (member.clientId === mp.playerId) return;
-  mp.presenceNames[member.data.index] = member.data.name;
-  addPlayerToWaiting(member.data.index, member.data.name);
+  mp.clientNames[member.clientId] = member.data.name;
+  if (gameState.mode === 'host') {
+    mp.seatAssignments[member.clientId] = member.data.index;
+  }
+  updateSeatSlot(member.data.index, member.data.name, true);
   showMessage(`${member.data.name} joined!`);
 }
 
 function onPresenceLeave(member) {
-  const slot = elements.playersContainer.querySelector(`[data-index="${member.data.index}"]`);
-  if (slot) {
-    slot.className = 'player-slot empty';
-    slot.querySelector('.player-slot-name').textContent = 'Waiting...';
+  if (gameState.mode === 'host') {
+    const seat = mp.seatAssignments[member.clientId];
+    delete mp.seatAssignments[member.clientId];
+    delete mp.clientNames[member.clientId];
+    if (seat !== undefined) updateSeatSlot(seat, 'Bot', false);
+  } else {
+    // Guest: find the slot showing this player's name
+    for (let i = 0; i < 4; i++) {
+      const el = document.getElementById(`seat-${i}`);
+      if (el && el.querySelector('.seat-name')?.textContent === member.data.name) {
+        updateSeatSlot(i, 'Bot', false);
+        break;
+      }
+    }
   }
-  updateWaitingCount();
 }
 
 // === Start Multiplayer Game (Host) ===
 function startMultiplayerGame() {
-  const humanSlots = [];
-  elements.playersContainer.querySelectorAll('.player-slot:not(.empty)').forEach(s => {
-    humanSlots.push(parseInt(s.dataset.index));
-  });
+  // Build isBot and playerNames from seatAssignments
+  const humanSeats = new Set(Object.values(mp.seatAssignments));
+  const fallback = ['South', 'West', 'North', 'East'];
 
-  gameState.isBot = [true, true, true, true];
-  humanSlots.forEach(i => { gameState.isBot[i] = false; });
-
-  const fallbackNames = ['South', 'West', 'North', 'East'];
-  gameState.playerNames = Array.from({ length: 4 }, (_, i) => `Player ${i + 1}`);
-  humanSlots.forEach(i => {
-    gameState.playerNames[i] = mp.presenceNames[i] || fallbackNames[i];
-  });
-  for (let i = 0; i < 4; i++) {
-    if (gameState.isBot[i]) gameState.playerNames[i] = fallbackNames[i];
+  gameState.isBot = [0, 1, 2, 3].map(i => !humanSeats.has(i));
+  gameState.playerNames = fallback.slice();
+  for (const [clientId, seat] of Object.entries(mp.seatAssignments)) {
+    gameState.playerNames[seat] = mp.clientNames[clientId] || fallback[seat];
   }
+
+  // Host's own seat may have changed via swaps
+  gameState.myPlayerIndex = mp.seatAssignments[mp.playerId] ?? 0;
 
   gameState.scores = [0, 0];
   gameState.tricks = [0, 0];
@@ -1011,6 +1096,7 @@ function startMultiplayerGame() {
     trumpChooser: gameState.trumpChooser,
     isBot: gameState.isBot,
     playerNames: gameState.playerNames,
+    seatAssignments: mp.seatAssignments,
     scores: [0, 0],
     roundNumber: 1
   });
@@ -1028,6 +1114,12 @@ function beginGame() {
 // === Remote Event Handlers ===
 function onGameStart(msg) {
   const d = msg.data;
+
+  // Resolve guest's final seat from host's seatAssignments
+  if (d.seatAssignments && d.seatAssignments[mp.playerId] !== undefined) {
+    gameState.myPlayerIndex = d.seatAssignments[mp.playerId];
+  }
+
   gameState.hands = d.hands;
   gameState.trumpChooser = d.trumpChooser;
   gameState.isBot = d.isBot;

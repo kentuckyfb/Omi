@@ -534,6 +534,88 @@ body::after {
   background: rgba(255,215,0,0.08);
 }
 
+/* ===== Team Grid (waiting room) ===== */
+.team-grid {
+  display: flex;
+  gap: 8px;
+}
+
+.team-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.team-col-label {
+  font-size: 7px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+  padding-bottom: 6px;
+  line-height: 1;
+}
+.t1-label { color: var(--p1-bright); }
+.t2-label { color: var(--p2-bright); }
+
+.seat-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border-left: 3px solid var(--border-2);
+  transition: background 60ms steps(1), border-color 60ms steps(1);
+  overflow: hidden;
+}
+.team-col:last-child .seat-slot {
+  border-left: none;
+  border-right: 3px solid var(--border-2);
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.seat-slot.occupied              { border-left-color: var(--p1); }
+.team-col:last-child .seat-slot.occupied { border-right-color: var(--p2); }
+
+.seat-slot.swappable             { cursor: pointer; }
+.seat-slot.swappable:hover       { background: var(--bg-4); }
+.seat-slot.swap-selected         { background: rgba(255,215,0,0.1); border-left-color: var(--gold) !important; }
+.team-col:last-child .seat-slot.swap-selected { border-right-color: var(--gold) !important; }
+
+.seat-pos {
+  font-size: 6px;
+  letter-spacing: 1px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  flex-shrink: 0;
+  line-height: 1;
+  width: 14px;
+}
+.team-col:last-child .seat-pos { text-align: right; }
+
+.seat-name {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--fg-dim);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.seat-slot.occupied .seat-name { color: var(--fg); }
+
+.swap-hint {
+  text-align: center;
+  font-size: 7px;
+  color: var(--fg-dim);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-top: 10px;
+  min-height: 12px;
+}
+
 /* ===== Game Screen ===== */
 #game-screen {
   display: flex;
