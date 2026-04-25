@@ -130,12 +130,27 @@ function playSound(type) {
   } catch {}
 }
 
+// === Player Name ===
+function loadPlayerName() {
+  return localStorage.getItem('omi-name') || '';
+}
+
+function savePlayerName(name) {
+  if (name) localStorage.setItem('omi-name', name);
+}
+
+function getPlayerName() {
+  const inputVal = elements.playerNameInput ? elements.playerNameInput.value.trim() : '';
+  return (inputVal || loadPlayerName() || 'Player').slice(0, 16);
+}
+
 // === Multiplayer State ===
 let mp = {
   client: null,
   channel: null,
   playerId: null,
-  pendingRoomSize: 4
+  pendingRoomSize: 4,
+  presenceNames: {}
 };
 
 const elements = {};
@@ -209,6 +224,8 @@ function initElements() {
 
   elements.connectionStatus = document.getElementById('connection-status');
   elements.statusText = document.querySelector('#connection-status .status-text');
+
+  elements.playerNameInput = document.getElementById('player-name-input');
 
   elements.settingsScreen = document.getElementById('settings-screen');
   elements.btnSettings = document.getElementById('btn-settings');
@@ -726,7 +743,8 @@ function startSinglePlayer() {
   gameState.mode = 'single';
   gameState.myPlayerIndex = 0;
   gameState.isBot = [false, true, true, true];
-  gameState.playerNames = ['You', 'West', 'North', 'East'];
+  const myName = loadPlayerName() || 'You';
+  gameState.playerNames = [myName, 'West', 'North', 'East'];
   gameState.scores = [0, 0];
   gameState.tricks = [0, 0];
   gameState.roundNumber = 1;
@@ -818,13 +836,17 @@ async function createRoom() {
   gameState.mode = 'host';
   gameState.myPlayerIndex = 0;
 
+  const myName = getPlayerName();
+  savePlayerName(myName);
+  mp.presenceNames = { 0: myName };
+
   mp.channel = mp.client.channels.get(`omi-${code}`);
   mp.channel.subscribe('card-play', onRemoteCardPlay);
   mp.channel.subscribe('trump-selected', onRemoteTrumpSelected);
   mp.channel.presence.subscribe('enter', onPresenceEnter);
   mp.channel.presence.subscribe('leave', onPresenceLeave);
 
-  await mp.channel.presence.enter({ name: 'Host', index: 0 });
+  await mp.channel.presence.enter({ name: myName, index: 0, roomSize: size });
   setConnectionStatus('connected');
   showWaitingRoom(code, size);
 }
@@ -844,6 +866,12 @@ async function joinRoom(code) {
   while (taken.includes(myIndex) && myIndex < 4) myIndex++;
   if (myIndex >= 4) { showMessage('Room is full!'); disconnectAbly(); setConnectionStatus(null); return; }
 
+  const myName = getPlayerName();
+  savePlayerName(myName);
+  mp.presenceNames = {};
+  members.forEach(m => { mp.presenceNames[m.data.index] = m.data.name; });
+  mp.presenceNames[myIndex] = myName;
+
   gameState.roomCode = code;
   gameState.mode = 'guest';
   gameState.myPlayerIndex = myIndex;
@@ -856,7 +884,7 @@ async function joinRoom(code) {
   mp.channel.presence.subscribe('enter', onPresenceEnter);
   mp.channel.presence.subscribe('leave', onPresenceLeave);
 
-  await mp.channel.presence.enter({ name: `Player ${myIndex + 1}`, index: myIndex });
+  await mp.channel.presence.enter({ name: myName, index: myIndex });
   setConnectionStatus('connected');
 
   // Determine size from existing members if host already set roomSize
@@ -865,7 +893,7 @@ async function joinRoom(code) {
 
   showWaitingRoom(code, roomSize);
   members.forEach(m => addPlayerToWaiting(m.data.index, m.data.name));
-  addPlayerToWaiting(myIndex, 'You');
+  addPlayerToWaiting(myIndex, myName);
 }
 
 // === Waiting Room UI ===
@@ -881,7 +909,7 @@ function showWaitingRoom(code, size) {
   elements.waitingText.textContent = 'Waiting for players...';
 
   if (gameState.mode === 'host') {
-    addPlayerToWaiting(0, 'You (Host)');
+    addPlayerToWaiting(0, getPlayerName());
     for (let i = 1; i < size; i++) addEmptySlot(i);
   }
 
@@ -934,6 +962,7 @@ function updateWaitingCount() {
 
 function onPresenceEnter(member) {
   if (member.clientId === mp.playerId) return;
+  mp.presenceNames[member.data.index] = member.data.name;
   addPlayerToWaiting(member.data.index, member.data.name);
   showMessage(`${member.data.name} joined!`);
 }
@@ -957,11 +986,13 @@ function startMultiplayerGame() {
   gameState.isBot = [true, true, true, true];
   humanSlots.forEach(i => { gameState.isBot[i] = false; });
 
-  gameState.playerNames = ['Player 1', 'Player 2', 'Player 3', 'Player 4'];
-  gameState.playerNames[0] = 'You';
-  humanSlots.filter(i => i > 0).forEach(i => { gameState.playerNames[i] = `P${i + 1}`; });
+  const fallbackNames = ['South', 'West', 'North', 'East'];
+  gameState.playerNames = Array.from({ length: 4 }, (_, i) => `Player ${i + 1}`);
+  humanSlots.forEach(i => {
+    gameState.playerNames[i] = mp.presenceNames[i] || fallbackNames[i];
+  });
   for (let i = 0; i < 4; i++) {
-    if (gameState.isBot[i]) gameState.playerNames[i] = ['Bot', 'West', 'North', 'East'][i];
+    if (gameState.isBot[i]) gameState.playerNames[i] = fallbackNames[i];
   }
 
   gameState.scores = [0, 0];
@@ -1083,7 +1114,10 @@ function onRemoteTrumpSelected(msg) {
 // === Event Listeners ===
 function initEventListeners() {
   elements.btnSolo.addEventListener('click', startSinglePlayer);
-  elements.btnOnline.addEventListener('click', () => showScreen(elements.lobbyScreen));
+  elements.btnOnline.addEventListener('click', () => {
+    elements.playerNameInput.value = loadPlayerName();
+    showScreen(elements.lobbyScreen);
+  });
   elements.btnSettings.addEventListener('click', () => {
     syncSettingsUI();
     showScreen(elements.settingsScreen);
@@ -1179,6 +1213,10 @@ function initEventListeners() {
 
   elements.roomCodeInput.addEventListener('input', e => {
     e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  });
+
+  elements.playerNameInput.addEventListener('input', e => {
+    savePlayerName(e.target.value.trim());
   });
 }
 

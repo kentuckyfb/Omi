@@ -362,6 +362,34 @@ body::after {
 
 .join-btn { white-space: nowrap; }
 
+/* Name input in lobby */
+.name-section {
+  margin-bottom: 20px;
+}
+
+.name-label {
+  font-size: 8px;
+  letter-spacing: 3px;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.name-input {
+  width: 100%;
+  background: var(--bg);
+  border: 3px solid var(--border-2);
+  color: var(--fg);
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  padding: 12px 16px;
+  letter-spacing: 1px;
+  outline: none;
+  transition: border-color 60ms steps(1);
+}
+.name-input:focus { border-color: var(--gold); }
+.name-input::placeholder { color: var(--fg-dim); font-size: 9px; letter-spacing: 1px; }
+
 /* ===== Waiting Screen ===== */
 .waiting-container {
   background: var(--bg-2);
@@ -1583,7 +1611,8 @@ html[data-theme="classic"] .size-tab,
 html[data-theme="classic"] .option-btn,
 html[data-theme="classic"] .trump-btn,
 html[data-theme="classic"] .back-btn,
-html[data-theme="classic"] .theme-card { border-radius: var(--r-sm); transition: all 180ms ease; }
+html[data-theme="classic"] .theme-card,
+html[data-theme="classic"] .name-input { border-radius: var(--r-sm); transition: all 180ms ease; }
 html[data-theme="classic"] .menu-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 html[data-theme="classic"] .scoreboard { border-bottom: 3px solid var(--gold); }
 html[data-theme="classic"] .score-panel::after { transition: width 600ms ease; }
@@ -1774,6 +1803,7 @@ html[data-theme="minimal"] .game-menu-btn { border-radius: var(--r-sm); }
 html[data-theme="minimal"] .back-btn { border-radius: var(--r-sm); }
 html[data-theme="minimal"] .size-tab { border-radius: var(--r-sm); }
 html[data-theme="minimal"] .option-btn { border-radius: var(--r-sm); transition: all 150ms ease; }
+html[data-theme="minimal"] .name-input { border-radius: var(--r-sm); }
 html[data-theme="minimal"] .theme-card { border-radius: var(--r-sm); }
 html[data-theme="minimal"] .trump-btn { border-radius: var(--r-sm); }
 html[data-theme="minimal"] .current-turn { border-radius: var(--r-sm); box-shadow: 0 4px 12px rgba(0,0,0,0.5); animation: none; background: var(--p1); }
