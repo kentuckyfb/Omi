@@ -341,10 +341,11 @@ body::after {
   white-space: nowrap;
 }
 
-.join-row { display: flex; gap: 8px; }
+.join-row { display: flex; gap: 8px; align-items: stretch; }
 
 .code-input {
   flex: 1;
+  min-width: 0;
   background: var(--bg);
   border: 3px solid var(--border-2);
   color: var(--gold);
@@ -360,7 +361,13 @@ body::after {
 .code-input:focus { border-color: var(--gold); }
 .code-input::placeholder { color: var(--fg-dim); letter-spacing: 3px; font-size: 10px; }
 
-.join-btn { white-space: nowrap; }
+.join-btn {
+  white-space: nowrap;
+  width: auto;
+  flex-shrink: 0;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
 
 /* Name input in lobby */
 .name-section {
