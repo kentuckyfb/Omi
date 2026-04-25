@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#000000">
+    <title>Omi</title>
+    <link rel="stylesheet" href="/src/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Main Menu -->
+        <div id="menu-screen" class="screen">
+            <div class="menu-container">
+                <h1 class="game-title">Omi</h1>
+                <p class="game-subtitle">Sri Lankan Card Game</p>
+                <div class="menu-buttons">
+                    <button class="menu-btn primary" id="btn-solo">Play Solo</button>
+                    <button class="menu-btn" id="btn-online">Play Online</button>
+                    <button class="menu-btn" id="btn-settings">Settings</button>
+                </div>
+                <div class="menu-footer">
+                    <p>First team to 10 points wins</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div id="settings-screen" class="screen hidden">
+            <div class="settings-container">
+                <button class="back-btn" id="btn-back-settings">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M10 12L6 8L10 4"/>
+                    </svg>
+                    Back
+                </button>
+                <h2 class="settings-title">Settings</h2>
+
+                <div class="settings-section">
+                    <div class="settings-label">Theme</div>
+                    <div class="theme-grid">
+                        <button class="theme-card active" data-theme="pixel">
+                            <div class="theme-preview pixel-preview"></div>
+                            <span>Pixel</span>
+                        </button>
+                        <button class="theme-card" data-theme="classic">
+                            <div class="theme-preview classic-preview"></div>
+                            <span>Classic</span>
+                        </button>
+                        <button class="theme-card" data-theme="neon">
+                            <div class="theme-preview neon-preview"></div>
+                            <span>Neon</span>
+                        </button>
+                        <button class="theme-card" data-theme="minimal">
+                            <div class="theme-preview minimal-preview"></div>
+                            <span>Minimal</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-label">Bot Speed</div>
+                    <div class="option-row" id="bot-speed-options">
+                        <button class="option-btn" data-key="botSpeed" data-val="slow">Slow</button>
+                        <button class="option-btn active" data-key="botSpeed" data-val="normal">Normal</button>
+                        <button class="option-btn" data-key="botSpeed" data-val="fast">Fast</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-label">Animations</div>
+                    <div class="option-row" id="anim-options">
+                        <button class="option-btn active" data-key="animations" data-val="normal">Normal</button>
+                        <button class="option-btn" data-key="animations" data-val="reduced">Reduced</button>
+                        <button class="option-btn" data-key="animations" data-val="off">Off</button>
+                    </div>
+                </div>
+
+                <div class="settings-section">
+                    <div class="settings-label">Sound</div>
+                    <div class="option-row" id="sound-options">
+                        <button class="option-btn active" data-key="sound" data-val="on">On</button>
+                        <button class="option-btn" data-key="sound" data-val="off">Off</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Multiplayer Lobby -->
+        <div id="lobby-screen" class="screen hidden">
+            <div class="lobby-container">
+                <button class="back-btn" id="btn-back-menu">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M10 12L6 8L10 4"/>
+                    </svg>
+                    Back
+                </button>
+                <h2>Online</h2>
+                <p class="lobby-sub">How many players?</p>
+                <div class="size-tabs">
+                    <button class="size-tab" data-size="2">2</button>
+                    <button class="size-tab" data-size="3">3</button>
+                    <button class="size-tab active" data-size="4">4</button>
+                </div>
+                <p class="size-note">Empty slots filled with bots</p>
+                <button class="menu-btn primary lobby-create-btn" id="btn-create-room">Create Room</button>
+                <div class="divider"><span>or join existing</span></div>
+                <div class="join-row">
+                    <input type="text" id="room-code-input" class="code-input" placeholder="CODE" maxlength="4" autocomplete="off" spellcheck="false">
+                    <button class="menu-btn join-btn" id="btn-join-room">Join</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Waiting Room -->
+        <div id="waiting-screen" class="screen hidden">
+            <div class="waiting-container">
+                <button class="back-btn" id="btn-leave-room">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M10 12L6 8L10 4"/>
+                    </svg>
+                    Leave
+                </button>
+                <div class="room-code-header">
+                    <p class="room-code-label">Room Code</p>
+                    <div class="room-code-row">
+                        <div class="room-code-chars" id="display-room-code"></div>
+                        <button class="copy-btn" id="btn-copy-code" title="Copy code">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <rect x="5" y="5" width="8" height="8" rx="1.5"/>
+                                <path d="M3 11V3h8"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="players-list">
+                    <div class="players-list-header">
+                        <span>Players</span>
+                        <span class="player-count-badge"><span id="player-count">0</span>/<span id="player-count-max">4</span></span>
+                    </div>
+                    <div id="players-container"></div>
+                </div>
+                <button class="menu-btn primary hidden" id="btn-start-game">Start Game</button>
+                <p class="waiting-text" id="waiting-text">Waiting for players...</p>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="game-screen" class="screen hidden">
+            <div class="scoreboard">
+                <div class="score-panel your-team-panel">
+                    <div class="score-label">Your Team</div>
+                    <div class="score-value" id="team1-score">0</div>
+                    <div class="score-tricks">Tricks: <span id="team1-tricks">0</span></div>
+                </div>
+                <div class="game-status" id="trump-info">
+                    <div class="status-cell">
+                        <span class="status-label">RD</span>
+                        <span class="round-value" id="round-display">1</span>
+                    </div>
+                    <div class="status-sep"></div>
+                    <div class="status-cell">
+                        <span class="status-label">Trump</span>
+                        <span class="trump-display" id="trump-display">—</span>
+                    </div>
+                </div>
+                <div class="score-panel opp-team-panel">
+                    <div class="score-label">Opponents</div>
+                    <div class="score-value" id="team2-score">0</div>
+                    <div class="score-tricks">Tricks: <span id="team2-tricks">0</span></div>
+                </div>
+            </div>
+
+            <div id="fight-overlay" class="fight-overlay hidden">
+                <div class="round-announce" id="fight-round-text">ROUND 1</div>
+                <span class="fight-text">FIGHT!</span>
+            </div>
+
+            <div class="game-field">
+                <div class="player-area north">
+                    <span class="player-name partner" id="north-name">North</span>
+                    <div class="hand bot-hand" id="north-hand"></div>
+                </div>
+                <div class="player-area east">
+                    <div class="hand vertical bot-hand" id="east-hand"></div>
+                    <span class="player-name opponent" id="east-name">East</span>
+                </div>
+                <div class="player-area west">
+                    <div class="hand vertical bot-hand" id="west-hand"></div>
+                    <span class="player-name opponent" id="west-name">West</span>
+                </div>
+                <div class="player-area south">
+                    <div class="hand player-hand" id="south-hand"></div>
+                    <span class="player-name you" id="south-name">You</span>
+                </div>
+
+                <div class="play-area">
+                    <div class="tricks-display" id="tricks-display">
+                        <span class="tricks-you">0</span>
+                        <span class="tricks-separator">-</span>
+                        <span class="tricks-opp">0</span>
+                    </div>
+                    <div class="played-cards" id="played-cards"></div>
+                    <div class="current-turn hidden" id="current-turn">Your turn</div>
+                </div>
+
+                <button class="game-menu-btn" id="btn-game-menu">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M3 5h14M3 10h14M3 15h14"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Trump modal -->
+        <div class="modal hidden" id="trump-modal">
+            <div class="modal-content">
+                <div class="modal-title">Choose Trump</div>
+                <p class="modal-text">Pick a suit based on your first 4 cards</p>
+                <div class="preview-cards" id="preview-cards"></div>
+                <div class="trump-options">
+                    <button class="trump-btn spades" data-suit="spades">&#9824;</button>
+                    <button class="trump-btn hearts" data-suit="hearts">&#9829;</button>
+                    <button class="trump-btn diamonds" data-suit="diamonds">&#9830;</button>
+                    <button class="trump-btn clubs" data-suit="clubs">&#9827;</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="message hidden" id="message"></div>
+
+        <!-- Round result modal -->
+        <div class="modal hidden" id="round-modal">
+            <div class="modal-content">
+                <div class="modal-title" id="round-title">Round Complete</div>
+                <div class="modal-text" id="round-message"></div>
+                <button class="modal-btn" id="btn-next-round">Next Round</button>
+            </div>
+        </div>
+
+        <!-- Game over modal -->
+        <div class="modal hidden" id="winner-modal">
+            <div class="modal-content">
+                <div class="modal-title" id="winner-title">Game Over</div>
+                <div class="modal-text" id="winner-message"></div>
+                <button class="modal-btn" id="btn-play-again">Play Again</button>
+                <button class="modal-btn secondary" id="btn-back-to-menu">Back to Menu</button>
+            </div>
+        </div>
+
+        <!-- Game menu modal -->
+        <div class="modal hidden" id="game-menu-modal">
+            <div class="modal-content">
+                <div class="modal-title">Paused</div>
+                <button class="modal-btn" id="btn-resume">Resume</button>
+                <button class="modal-btn secondary" id="btn-quit">Quit Game</button>
+            </div>
+        </div>
+
+        <!-- Connection status -->
+        <div class="connection-status hidden" id="connection-status">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+        </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
