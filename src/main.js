@@ -10,6 +10,7 @@ const SUITS = ['spades', 'hearts', 'diamonds', 'clubs'];
 const RANKS = ['7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUIT_SYMBOLS = { spades: '♠', hearts: '♥', diamonds: '♦', clubs: '♣' };
 const RANK_VALUES = { '7': 1, '8': 2, '9': 3, '10': 4, 'J': 5, 'Q': 6, 'K': 7, 'A': 8 };
+const FIGHT_TEXT = { pixel: 'FIGHT!', classic: 'PLAY!', neon: 'ENGAGE!', minimal: 'GO' };
 
 // === Game State ===
 let gameState = {
@@ -235,6 +236,7 @@ function initElements() {
 
   elements.fightOverlay = document.getElementById('fight-overlay');
   elements.fightRoundText = document.getElementById('fight-round-text');
+  elements.fightText = document.getElementById('fight-text');
 
   elements.team1Panel = document.querySelector('.your-team-panel');
   elements.team2Panel = document.querySelector('.opp-team-panel');
@@ -660,6 +662,7 @@ function updateScoreBars() {
 
 function showFightOverlay() {
   elements.fightRoundText.textContent = `ROUND ${gameState.roundNumber}`;
+  elements.fightText.textContent = FIGHT_TEXT[settings.theme] || 'FIGHT!';
   elements.fightOverlay.classList.remove('hidden');
   setTimeout(() => elements.fightOverlay.classList.add('hidden'), 1900);
   playSound('fight');
