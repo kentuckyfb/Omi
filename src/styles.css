@@ -1321,9 +1321,8 @@ body::after {
 /* ===== Connection Status ===== */
 .connection-status {
   position: fixed;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 8px;
+  right: 12px;
   display: flex;
   align-items: center;
   gap: 8px;

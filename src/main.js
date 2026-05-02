@@ -1111,6 +1111,7 @@ function startMultiplayerGame() {
 }
 
 function beginGame() {
+  setConnectionStatus(null);
   resetGameUI();
   showScreen(elements.gameScreen);
   renderHands();
