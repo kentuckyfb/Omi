@@ -368,10 +368,10 @@ function playCard(card, cardEl) {
   renderPlayerHand();
   elements.currentTurn.classList.add('hidden');
 
-  if (gameState.mode === 'guest') {
+  if (gameState.mode !== 'single') {
     mp.channel.publish('card-play', { suit: card.suit, rank: card.rank, playerIndex: my });
-    // Guest waits; trick advance comes from received events
-  } else {
+  }
+  if (gameState.mode !== 'guest') {
     setTimeout(() => nextTurn(), getPlayerNextDelay());
   }
 }
@@ -497,8 +497,7 @@ function nextTurn() {
     elements.currentTurn.classList.remove('hidden');
     updatePlayableCards();
     playSound('your-turn');
-  } else if (gameState.isBot[cp]) {
-    // Only host/single runs bots
+  } else if (gameState.isBot[cp] && gameState.mode !== 'guest') {
     setTimeout(() => {
       const played = botPlayCard(cp);
       if (played && gameState.mode === 'host') {
@@ -522,18 +521,24 @@ function resolveTrick() {
   const rel = (winner.playerIndex - gameState.myPlayerIndex + 4) % 4;
   elements.playedCards.classList.add(['fly-south', 'fly-west', 'fly-north', 'fly-east'][rel]);
 
+  // Snapshot before clearing so animation still plays correctly
+  const isLastTrick = gameState.hands[gameState.myPlayerIndex].length === 0;
+  const winnerIndex = winner.playerIndex;
+
+  // Clear immediately so cards arriving during animation start a fresh trick
+  gameState.currentTrick = [];
+  gameState.leadSuit = null;
+
   setTimeout(() => {
     elements.playedCards.innerHTML = '';
     elements.playedCards.classList.remove('fly-south', 'fly-west', 'fly-north', 'fly-east');
-    gameState.currentTrick = [];
-    gameState.leadSuit = null;
 
-    if (gameState.hands[gameState.myPlayerIndex].length === 0) {
+    if (isLastTrick) {
       endRound();
       return;
     }
 
-    gameState.currentPlayer = winner.playerIndex;
+    gameState.currentPlayer = winnerIndex;
     const cp = gameState.currentPlayer;
 
     if (cp === gameState.myPlayerIndex) {
@@ -542,7 +547,7 @@ function resolveTrick() {
       elements.currentTurn.classList.remove('hidden');
       updatePlayableCards();
       playSound('your-turn');
-    } else if (gameState.isBot[cp]) {
+    } else if (gameState.isBot[cp] && gameState.mode !== 'guest') {
       setTimeout(() => {
         const played = botPlayCard(cp);
         if (played && gameState.mode === 'host') {
@@ -551,7 +556,7 @@ function resolveTrick() {
         setTimeout(() => nextTurn(), getBotNextDelay());
       }, getBotThinkDelay());
     }
-    // else: wait for guest to lead
+    // else: wait for guest to lead or next card-play event
   }, getTrickDelay());
 }
 
@@ -643,7 +648,8 @@ function startNextRound() {
     mp.channel.publish('round-start', {
       hands: gameState.hands,
       trumpChooser: gameState.trumpChooser,
-      roundNumber: gameState.roundNumber
+      roundNumber: gameState.roundNumber,
+      scores: gameState.scores
     });
   }
 
@@ -1141,6 +1147,12 @@ function onRoundStart(msg) {
   gameState.hands = d.hands;
   gameState.trumpChooser = d.trumpChooser;
   gameState.roundNumber = d.roundNumber;
+  if (d.scores) {
+    gameState.scores = d.scores;
+    elements.team1Score.textContent = gameState.scores[0];
+    elements.team2Score.textContent = gameState.scores[1];
+    updateScoreBars();
+  }
   gameState.tricks = [0, 0];
   gameState.currentTrick = [];
   gameState.leadSuit = null;
@@ -1184,15 +1196,16 @@ function onRemoteCardPlay(msg) {
   } else {
     // Guest: received card from host/another player
     if (gameState.currentTrick.length === 4) {
-      setTimeout(() => resolveTrick(), 600);
+      // No extra delay — matches host's getTrickDelay() timing in resolveTrick
+      resolveTrick();
     } else {
-      // Advance currentPlayer pointer for guests
       gameState.currentPlayer = (playerIndex + 1) % 4;
       if (gameState.currentPlayer === gameState.myPlayerIndex) {
         gameState.isPlayerTurn = true;
         elements.currentTurn.textContent = 'Your turn';
         elements.currentTurn.classList.remove('hidden');
         updatePlayableCards();
+        playSound('your-turn');
       }
     }
   }
