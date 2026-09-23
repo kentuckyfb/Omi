@@ -1,6 +1,10 @@
 // ===== Omi Card Game =====
 
+import { inject } from '@vercel/analytics';
 import { Realtime } from 'ably';
+
+// Initialize Vercel Analytics
+inject();
 
 // Add your free Ably API key from https://ably.com
 const ABLY_API_KEY = 'j2A0-A.Cr1qtA:ojdgVsJef0B2e_W-Lwh2WlYlN_5jX7tnCtmXTxkvuQM';
