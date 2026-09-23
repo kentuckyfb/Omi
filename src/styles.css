@@ -2001,3 +2001,298 @@ html .player-area.turn-active .player-name {
   border-color: color-mix(in srgb, var(--gold) 72%, white);
   color: #08080f;
 }
+
+/* ========================================================================== */
+/* Theme polish: each option has its own materials, depth, and table surface. */
+/* ========================================================================== */
+
+.game-field::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.player-area, .play-area, .game-menu-btn { z-index: 2; }
+.play-area { transition: border-color 240ms ease, box-shadow 240ms ease, background 240ms ease; }
+.card.face-up {
+  background: linear-gradient(145deg, #fff 0%, #ececf4 72%, #d7d7e4 100%);
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.42), inset 0 0 0 1px rgba(255,255,255,0.7);
+}
+.menu-btn, .modal-btn, .option-btn, .theme-card, .trump-btn, .back-btn, .game-menu-btn {
+  transition: transform var(--t-fast), color var(--t-fast), background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+/* Pixel — crisp arcade cabinet with a restrained blueprint grid. */
+html:not([data-theme]) #game-screen {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(20,38,78,0.28), transparent 42%),
+    linear-gradient(180deg, #090a14 0%, #05060c 100%);
+}
+html:not([data-theme]) .game-field::before {
+  background-image:
+    linear-gradient(rgba(62,90,160,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(62,90,160,0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at center, #000 10%, transparent 78%);
+}
+html:not([data-theme]) .scoreboard {
+  box-shadow: 0 7px 24px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.04) inset;
+}
+html:not([data-theme]) .play-area {
+  border-color: rgba(255,215,0,0.28);
+  background: radial-gradient(circle, rgba(20,46,92,0.24), rgba(5,7,16,0.25) 66%, transparent 70%);
+  box-shadow: 0 0 0 1px rgba(255,215,0,0.06), 0 0 42px rgba(20,80,180,0.1), inset 0 0 35px rgba(0,0,0,0.42);
+}
+html:not([data-theme]) .card:not(.face-up) {
+  background-color: #07132f;
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.52), 0 0 9px rgba(17,119,255,0.16);
+}
+html:not([data-theme]) .menu-container,
+html:not([data-theme]) .lobby-container,
+html:not([data-theme]) .waiting-container,
+html:not([data-theme]) .settings-container,
+html:not([data-theme]) .modal-content {
+  background-image: linear-gradient(145deg, rgba(255,255,255,0.025), transparent 42%);
+}
+
+/* Classic — deep green baize, ivory cards, walnut panels, and warm brass. */
+html[data-theme="classic"] {
+  --bg: #071a11;
+  --bg-2: #10271b;
+  --bg-3: #183524;
+  --bg-4: #22452f;
+  --fg: #fffaf0;
+  --fg-2: #d8c8a5;
+  --fg-dim: #8c7d5f;
+  --gold: #d7b966;
+  --gold-2: #b99442;
+  --gold-3: #72581f;
+  --border: #183523;
+  --border-2: #386044;
+}
+html[data-theme="classic"] #game-screen {
+  background:
+    radial-gradient(ellipse at 50% 46%, rgba(34,91,58,0.55), transparent 58%),
+    linear-gradient(145deg, #0c2b1b, #06170f 72%);
+}
+html[data-theme="classic"] .game-field::before {
+  opacity: 0.36;
+  background-image:
+    repeating-linear-gradient(26deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(116deg, rgba(0,0,0,0.045) 0 1px, transparent 1px 7px);
+}
+html[data-theme="classic"] .scoreboard {
+  border-color: var(--gold);
+  background: linear-gradient(180deg, #25170f, #130d09);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.58), inset 0 -1px 0 rgba(255,255,255,0.07);
+}
+html[data-theme="classic"] .score-panel,
+html[data-theme="classic"] .game-status { background-color: rgba(20,13,8,0.62); }
+html[data-theme="classic"] .play-area {
+  border: 2px solid rgba(215,185,102,0.34);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.025), rgba(0,0,0,0.13) 70%);
+  box-shadow: 0 0 0 8px rgba(6,28,17,0.32), 0 12px 38px rgba(0,0,0,0.28), inset 0 0 26px rgba(0,0,0,0.18);
+}
+html[data-theme="classic"] .card.face-up {
+  color: #17120c;
+  background: linear-gradient(145deg, #fffdf4, #f1e8d4 70%, #dfd0af);
+  border-color: #9a8968;
+  box-shadow: 0 5px 10px rgba(0,0,0,0.38), inset 0 0 0 1px rgba(255,255,255,0.8);
+}
+html[data-theme="classic"] .card.face-up.hearts,
+html[data-theme="classic"] .card.face-up.diamonds { color: #a71920; }
+html[data-theme="classic"] .card:not(.face-up) {
+  background-color: #431820;
+  border-color: #d0ad5a;
+  box-shadow: 0 4px 9px rgba(0,0,0,0.42);
+}
+html[data-theme="classic"] .card:not(.face-up)::before {
+  border-color: rgba(215,185,102,0.58);
+  background:
+    repeating-linear-gradient(45deg, transparent 0 5px, rgba(215,185,102,0.14) 5px 6px),
+    repeating-linear-gradient(-45deg, transparent 0 5px, rgba(215,185,102,0.1) 5px 6px);
+}
+html[data-theme="classic"] .card:not(.face-up)::after { color: rgba(238,210,139,0.7); }
+html[data-theme="classic"] .current-turn,
+html[data-theme="classic"] .player-area.turn-active .player-name {
+  background: linear-gradient(180deg, #ead38b, #bd923d);
+  border-color: #fff0b3;
+  color: #241609;
+}
+html[data-theme="classic"] .menu-container,
+html[data-theme="classic"] .lobby-container,
+html[data-theme="classic"] .waiting-container,
+html[data-theme="classic"] .settings-container,
+html[data-theme="classic"] .modal-content {
+  background: linear-gradient(145deg, rgba(31,65,44,0.98), rgba(9,31,19,0.98));
+  border-color: var(--gold);
+  box-shadow: 0 18px 52px rgba(0,0,0,0.56), inset 0 0 0 1px rgba(255,255,255,0.045);
+}
+html[data-theme="classic"] .menu-btn.primary,
+html[data-theme="classic"] .modal-btn { background: linear-gradient(180deg, #31583c, #1a3925); }
+
+/* Neon — cyan/magenta arena with luminous edges and a perspective grid. */
+html[data-theme="neon"] #game-screen {
+  background:
+    radial-gradient(circle at 50% 46%, rgba(0,255,204,0.09), transparent 34%),
+    radial-gradient(circle at 82% 34%, rgba(255,0,110,0.08), transparent 28%),
+    linear-gradient(180deg, #06000d, #020005);
+}
+html[data-theme="neon"] .game-field::before {
+  background-image:
+    linear-gradient(rgba(0,255,204,0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,0,110,0.045) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent);
+}
+html[data-theme="neon"] .scoreboard {
+  box-shadow: 0 0 24px rgba(0,255,204,0.2), 0 7px 28px rgba(0,0,0,0.7);
+}
+html[data-theme="neon"] .game-status {
+  border-color: rgba(0,255,204,0.34);
+  background: linear-gradient(180deg, rgba(12,0,30,0.98), rgba(3,0,10,0.98));
+}
+html[data-theme="neon"] .play-area {
+  border-color: rgba(0,255,204,0.58);
+  background: radial-gradient(circle, rgba(0,255,204,0.07), rgba(255,0,110,0.025) 58%, transparent 72%);
+  box-shadow: 0 0 0 1px rgba(255,0,110,0.35), 0 0 34px rgba(0,255,204,0.16), inset 0 0 38px rgba(0,255,204,0.06);
+}
+html[data-theme="neon"] .card.face-up {
+  background: linear-gradient(145deg, #fdfaff, #dfd5f2);
+  border-color: #9b7fc3;
+  box-shadow: 0 0 13px rgba(0,255,204,0.2), 3px 4px 0 #000;
+}
+html[data-theme="neon"] .card:not(.face-up) {
+  background: linear-gradient(145deg, #050019, #001c22);
+  border-color: var(--p1);
+  box-shadow: 0 0 10px rgba(0,255,204,0.25), 3px 4px 0 #000;
+}
+html[data-theme="neon"] .card:not(.face-up)::before {
+  border-color: rgba(0,255,204,0.52);
+  background:
+    linear-gradient(45deg, transparent 46%, rgba(255,0,110,0.23) 48% 52%, transparent 54%),
+    linear-gradient(-45deg, transparent 46%, rgba(0,255,204,0.2) 48% 52%, transparent 54%);
+  background-size: 12px 12px;
+}
+html[data-theme="neon"] .player-area.turn-active .player-name,
+html[data-theme="neon"] .current-turn {
+  background: #00ffd0;
+  border-color: #c9fff7;
+  color: #00120f;
+  box-shadow: 0 0 8px #00ffcc, 0 0 25px rgba(0,255,204,0.65), 4px 4px 0 #000;
+}
+html[data-theme="neon"] .current-turn[data-relation="opponent"] {
+  background: #ff006e;
+  border-color: #ffb5d4;
+  color: #fff;
+  box-shadow: 0 0 8px #ff006e, 0 0 25px rgba(255,0,110,0.62), 4px 4px 0 #000;
+}
+html[data-theme="neon"] .game-menu-btn { border-color: rgba(0,255,204,0.55); box-shadow: 0 0 13px rgba(0,255,204,0.16); }
+
+/* Minimal — premium neutral surfaces, soft elevation, and restrained color. */
+html[data-theme="minimal"] {
+  --bg: #0b0c0f;
+  --bg-2: #111318;
+  --bg-3: #181b21;
+  --bg-4: #22262e;
+  --fg: #f4f6f8;
+  --fg-2: #b1b7c2;
+  --fg-dim: #68707d;
+  --gold: #6c9cff;
+  --gold-2: #4d7fe7;
+  --border: #20242b;
+  --border-2: #343a45;
+}
+html[data-theme="minimal"] #game-screen {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(76,108,170,0.12), transparent 44%),
+    #0b0c0f;
+}
+html[data-theme="minimal"] .game-field::before {
+  background: linear-gradient(110deg, rgba(255,255,255,0.012), transparent 38%, rgba(108,156,255,0.018) 65%, transparent);
+}
+html[data-theme="minimal"] .scoreboard {
+  background: rgba(17,19,24,0.94);
+  border-color: rgba(255,255,255,0.1);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.32);
+  backdrop-filter: blur(12px);
+}
+html[data-theme="minimal"] .score-panel,
+html[data-theme="minimal"] .game-status { background: transparent; }
+html[data-theme="minimal"] .play-area {
+  border-color: rgba(255,255,255,0.1);
+  border-radius: 18px;
+  background: rgba(255,255,255,0.018);
+  box-shadow: 0 18px 54px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.025);
+}
+html[data-theme="minimal"] .card.face-up {
+  background: linear-gradient(145deg, #fff, #e9ebef);
+  border-color: #c8ccd3;
+  box-shadow: 0 7px 18px rgba(0,0,0,0.34), inset 0 1px 0 #fff;
+}
+html[data-theme="minimal"] .card:not(.face-up) {
+  background: linear-gradient(145deg, #1c2843, #101622);
+  border-color: #527acb;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.34);
+}
+html[data-theme="minimal"] .card:not(.face-up)::before {
+  border-color: rgba(130,169,255,0.34);
+  background: radial-gradient(circle at center, rgba(108,156,255,0.2), transparent 64%);
+}
+html[data-theme="minimal"] .player-name,
+html[data-theme="minimal"] .current-turn,
+html[data-theme="minimal"] .game-menu-btn { border-radius: 999px; }
+html[data-theme="minimal"] .player-area.turn-active .player-name,
+html[data-theme="minimal"] .current-turn {
+  background: #f4f6f8;
+  border-color: #fff;
+  color: #111318;
+  box-shadow: 0 8px 26px rgba(0,0,0,0.34), 0 0 0 3px rgba(108,156,255,0.24);
+}
+html[data-theme="minimal"] .current-turn[data-relation="opponent"] { background: #ff6b78; color: #190609; border-color: #ff9da6; }
+html[data-theme="minimal"] .menu-btn,
+html[data-theme="minimal"] .modal-btn,
+html[data-theme="minimal"] .option-btn,
+html[data-theme="minimal"] .theme-card,
+html[data-theme="minimal"] .trump-btn {
+  border-width: 1px;
+  box-shadow: none;
+}
+html[data-theme="minimal"] .menu-btn:hover,
+html[data-theme="minimal"] .modal-btn:hover,
+html[data-theme="minimal"] .option-btn:hover,
+html[data-theme="minimal"] .theme-card:hover { transform: translateY(-1px); border-color: #657085; }
+
+/* Richer settings thumbnails so theme choices preview their real character. */
+.theme-preview { overflow: hidden; box-shadow: inset 0 0 18px rgba(0,0,0,0.34); }
+.classic-preview {
+  background:
+    radial-gradient(circle, rgba(56,120,77,0.6), transparent 64%),
+    repeating-linear-gradient(32deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 5px),
+    #0b2416;
+}
+.classic-preview::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border: 1px solid rgba(215,185,102,0.45);
+  border-radius: 50%;
+}
+.neon-preview {
+  background-color: #030008;
+  background-image:
+    linear-gradient(rgba(0,255,204,0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,0,110,0.1) 1px, transparent 1px);
+  background-size: 10px 10px;
+}
+.minimal-preview { background: radial-gradient(circle at center, #262b34, #0d0f13 70%); }
+
+@media (max-width: 480px) {
+  html[data-theme="classic"] .play-area { box-shadow: 0 0 0 5px rgba(6,28,17,0.3), inset 0 0 20px rgba(0,0,0,0.16); }
+  html[data-theme="neon"] .game-field::before { background-size: 28px 28px; }
+  html[data-theme="minimal"] .play-area { border-radius: 14px; }
+  .theme-card { padding: 9px; gap: 7px; }
+  .theme-preview { height: 54px; }
+}
