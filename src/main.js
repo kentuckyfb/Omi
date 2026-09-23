@@ -30,6 +30,8 @@ let gameState = {
   tricks: [0, 0],
   scores: [0, 0],
   roundNumber: 1,
+  playSequence: 0,
+  phase: 'idle',
   isPlayerTurn: false,
   gameStarted: false
 };
@@ -81,13 +83,6 @@ function getBotThinkDelay() {
 function getTrickDelay() {
   return settings.botSpeed === 'slow' ? 2000 : settings.botSpeed === 'fast' ? 500 : 1200;
 }
-function getBotNextDelay() {
-  return settings.botSpeed === 'slow' ? 700 : settings.botSpeed === 'fast' ? 80 : 400;
-}
-function getPlayerNextDelay() {
-  return settings.botSpeed === 'slow' ? 900 : settings.botSpeed === 'fast' ? 200 : 600;
-}
-
 // === Sound System ===
 let audioCtx = null;
 
@@ -153,8 +148,20 @@ let mp = {
   pendingRoomSize: 4,
   seatAssignments: {},  // host-managed: clientId → seat index 0-3
   clientNames: {},      // clientId → display name
-  selectedSeat: null    // host UI: first seat clicked for swap
+  selectedSeat: null,   // host UI: first seat clicked for swap
+  hostId: null
 };
+
+// Invalidates delayed game-flow callbacks whenever a new game/round begins.
+// UI-only timers (messages and overlays) deliberately do not use this token.
+let flowGeneration = 0;
+function resetGameFlow() { flowGeneration++; }
+function scheduleGameFlow(callback, delay) {
+  const generation = flowGeneration;
+  setTimeout(() => {
+    if (generation === flowGeneration && gameState.gameStarted) callback();
+  }, delay);
+}
 
 const elements = {};
 
@@ -183,6 +190,8 @@ function initElements() {
 
   elements.team1Score = document.getElementById('team1-score');
   elements.team2Score = document.getElementById('team2-score');
+  elements.team1Label = document.getElementById('team1-label');
+  elements.team2Label = document.getElementById('team2-label');
   elements.trumpDisplay = document.getElementById('trump-display');
   elements.team1Tricks = document.getElementById('team1-tricks');
   elements.team2Tricks = document.getElementById('team2-tricks');
@@ -356,11 +365,26 @@ function updatePlayableCards() {
 
 // === Play Card ===
 function playCard(card, cardEl) {
-  if (!gameState.isPlayerTurn || cardEl.classList.contains('disabled')) return;
+  if (!gameState.isPlayerTurn || gameState.phase !== 'playing' || cardEl.classList.contains('disabled')) return;
   gameState.isPlayerTurn = false;
-  playSound('play');
-
   const my = gameState.myPlayerIndex;
+
+  // Guests request a play; only the host mutates and broadcasts game state.
+  // This keeps every client on one ordered event stream and lets the host
+  // reject stale, out-of-turn, or illegal plays.
+  if (gameState.mode === 'guest') {
+    elements.currentTurn.classList.add('hidden');
+    updatePlayableCards();
+    mp.channel.publish('play-request', {
+      suit: card.suit,
+      rank: card.rank,
+      playerIndex: my,
+      roundNumber: gameState.roundNumber
+    });
+    return;
+  }
+
+  playSound('play');
   const idx = gameState.hands[my].findIndex(c => c.suit === card.suit && c.rank === card.rank);
   if (idx > -1) gameState.hands[my].splice(idx, 1);
 
@@ -368,12 +392,19 @@ function playCard(card, cardEl) {
   renderPlayerHand();
   elements.currentTurn.classList.add('hidden');
 
-  if (gameState.mode !== 'single') {
-    mp.channel.publish('card-play', { suit: card.suit, rank: card.rank, playerIndex: my });
-  }
-  if (gameState.mode !== 'guest') {
-    setTimeout(() => nextTurn(), getPlayerNextDelay());
-  }
+  if (gameState.mode === 'host') publishCardPlay(card, my);
+  nextTurn();
+}
+
+function publishCardPlay(card, playerIndex) {
+  gameState.playSequence++;
+  mp.channel.publish('card-play', {
+    suit: card.suit,
+    rank: card.rank,
+    playerIndex,
+    roundNumber: gameState.roundNumber,
+    playSequence: gameState.playSequence
+  });
 }
 
 // === Trick Display ===
@@ -486,6 +517,7 @@ function getCurrentWinner() {
 
 // === Turn Flow ===
 function nextTurn() {
+  if (gameState.phase !== 'playing') return;
   if (gameState.currentTrick.length === 4) { resolveTrick(); return; }
 
   gameState.currentPlayer = (gameState.currentPlayer + 1) % 4;
@@ -498,18 +530,25 @@ function nextTurn() {
     updatePlayableCards();
     playSound('your-turn');
   } else if (gameState.isBot[cp] && gameState.mode !== 'guest') {
-    setTimeout(() => {
+    scheduleGameFlow(() => {
+      if (gameState.phase !== 'playing' || gameState.currentPlayer !== cp) return;
       const played = botPlayCard(cp);
       if (played && gameState.mode === 'host') {
-        mp.channel.publish('card-play', { suit: played.suit, rank: played.rank, playerIndex: cp });
+        publishCardPlay(played, cp);
       }
-      setTimeout(() => nextTurn(), getBotNextDelay());
+      nextTurn();
     }, getBotThinkDelay());
   }
   // else: human guest turn — wait for their card-play message
 }
 
 function resolveTrick() {
+  if (gameState.phase !== 'playing' || gameState.currentTrick.length !== 4) return;
+  gameState.phase = 'resolving';
+  gameState.isPlayerTurn = false;
+  elements.currentTurn.classList.add('hidden');
+  updatePlayableCards();
+
   const winner = getCurrentWinner();
   const team = winner.playerIndex % 2;
   gameState.tricks[team]++;
@@ -525,13 +564,11 @@ function resolveTrick() {
   const isLastTrick = gameState.hands[gameState.myPlayerIndex].length === 0;
   const winnerIndex = winner.playerIndex;
 
-  // Clear immediately so cards arriving during animation start a fresh trick
-  gameState.currentTrick = [];
-  gameState.leadSuit = null;
-
-  setTimeout(() => {
+  scheduleGameFlow(() => {
     elements.playedCards.innerHTML = '';
     elements.playedCards.classList.remove('fly-south', 'fly-west', 'fly-north', 'fly-east');
+    gameState.currentTrick = [];
+    gameState.leadSuit = null;
 
     if (isLastTrick) {
       endRound();
@@ -539,6 +576,15 @@ function resolveTrick() {
     }
 
     gameState.currentPlayer = winnerIndex;
+    gameState.phase = 'playing';
+    if (gameState.mode === 'host') {
+      mp.channel.publish('trick-resolved', {
+        roundNumber: gameState.roundNumber,
+        winnerIndex,
+        tricks: [...gameState.tricks],
+        nextPlayer: winnerIndex
+      });
+    }
     const cp = gameState.currentPlayer;
 
     if (cp === gameState.myPlayerIndex) {
@@ -548,12 +594,13 @@ function resolveTrick() {
       updatePlayableCards();
       playSound('your-turn');
     } else if (gameState.isBot[cp] && gameState.mode !== 'guest') {
-      setTimeout(() => {
+      scheduleGameFlow(() => {
+        if (gameState.phase !== 'playing' || gameState.currentPlayer !== cp) return;
         const played = botPlayCard(cp);
         if (played && gameState.mode === 'host') {
-          mp.channel.publish('card-play', { suit: played.suit, rank: played.rank, playerIndex: cp });
+          publishCardPlay(played, cp);
         }
-        setTimeout(() => nextTurn(), getBotNextDelay());
+        nextTurn();
       }, getBotThinkDelay());
     }
     // else: wait for guest to lead or next card-play event
@@ -561,27 +608,67 @@ function resolveTrick() {
 }
 
 function updateTricksDisplay() {
-  elements.team1Tricks.textContent = gameState.tricks[0];
-  elements.team2Tricks.textContent = gameState.tricks[1];
+  const myTeam = gameState.myPlayerIndex % 2;
+  const theirTeam = 1 - myTeam;
+  elements.team1Tricks.textContent = gameState.tricks[myTeam];
+  elements.team2Tricks.textContent = gameState.tricks[theirTeam];
   elements.tricksDisplay.innerHTML = `
-    <span class="tricks-you">${gameState.tricks[0]}</span>
+    <span class="tricks-you">${gameState.tricks[myTeam]}</span>
     <span class="tricks-separator">-</span>
-    <span class="tricks-opp">${gameState.tricks[1]}</span>
+    <span class="tricks-opp">${gameState.tricks[theirTeam]}</span>
   `;
+}
+
+function updateTeamDisplay() {
+  const my = gameState.myPlayerIndex;
+  const partner = (my + 2) % 4;
+  const leftOpponent = (my + 1) % 4;
+  const rightOpponent = (my + 3) % 4;
+  elements.team1Label.textContent = `${gameState.playerNames[my]} + ${gameState.playerNames[partner]}`;
+  elements.team2Label.textContent = `${gameState.playerNames[leftOpponent]} + ${gameState.playerNames[rightOpponent]}`;
+
+  const myTeam = my % 2;
+  elements.team1Score.textContent = gameState.scores[myTeam];
+  elements.team2Score.textContent = gameState.scores[1 - myTeam];
+  updateTricksDisplay();
+  updateScoreBars();
 }
 
 function endRound() {
   const t1 = gameState.tricks[0], t2 = gameState.tricks[1];
-  let p1 = 0, p2 = 0, msg = '';
-  if (t1 >= 5) { p1 = t1 === 8 ? 3 : t1 >= 7 ? 2 : 1; msg = `Your team wins ${p1} point${p1 > 1 ? 's' : ''}!`; }
-  else if (t2 >= 5) { p2 = t2 === 8 ? 3 : t2 >= 7 ? 2 : 1; msg = `Opponents win ${p2} point${p2 > 1 ? 's' : ''}!`; }
-  else { msg = 'Draw! No points awarded.'; }
+  let p1 = 0, p2 = 0;
+  if (t1 >= 5) p1 = t1 === 8 ? 3 : t1 >= 7 ? 2 : 1;
+  else if (t2 >= 5) p2 = t2 === 8 ? 3 : t2 >= 7 ? 2 : 1;
 
   gameState.scores[0] += p1;
   gameState.scores[1] += p2;
-  elements.team1Score.textContent = gameState.scores[0];
-  elements.team2Score.textContent = gameState.scores[1];
-  updateScoreBars();
+  gameState.phase = 'round-end';
+  showRoundEnd(t1, t2);
+
+  if (gameState.mode === 'host') {
+    mp.channel.publish('round-ended', {
+      roundNumber: gameState.roundNumber,
+      tricks: [...gameState.tricks],
+      scores: [...gameState.scores]
+    });
+  }
+}
+
+function showRoundEnd(t1, t2) {
+  const myTeam = gameState.myPlayerIndex % 2;
+  const myTricks = gameState.tricks[myTeam];
+  const theirTricks = gameState.tricks[1 - myTeam];
+  const myScore = gameState.scores[myTeam];
+  const theirScore = gameState.scores[1 - myTeam];
+  const winningTeam = t1 >= 5 ? 0 : t2 >= 5 ? 1 : null;
+  const points = winningTeam === 0
+    ? (t1 === 8 ? 3 : t1 >= 7 ? 2 : 1)
+    : winningTeam === 1 ? (t2 === 8 ? 3 : t2 >= 7 ? 2 : 1) : 0;
+  const msg = winningTeam === null
+    ? 'Draw! No points awarded.'
+    : `${winningTeam === myTeam ? 'Your team' : 'Opponents'} win ${points} point${points > 1 ? 's' : ''}!`;
+
+  updateTeamDisplay();
 
   // Screen flash
   elements.gameScreen.classList.add('flash');
@@ -595,8 +682,8 @@ function endRound() {
     <div class="round-result">
       <div class="result-main">${msg}</div>
       <div class="result-details">
-        <div class="result-row"><span>Tricks</span><span><strong>${t1}</strong> - <strong>${t2}</strong></span></div>
-        <div class="result-row"><span>Score</span><span><strong>${gameState.scores[0]}</strong> - <strong>${gameState.scores[1]}</strong></span></div>
+        <div class="result-row"><span>Tricks</span><span><strong>${myTricks}</strong> - <strong>${theirTricks}</strong></span></div>
+        <div class="result-row"><span>Score</span><span><strong>${myScore}</strong> - <strong>${theirScore}</strong></span></div>
       </div>
     </div>
   `;
@@ -613,13 +700,14 @@ function endRound() {
 }
 
 function endGame() {
-  const youWin = gameState.scores[0] >= 10;
+  const myTeam = gameState.myPlayerIndex % 2;
+  const youWin = gameState.scores[myTeam] >= 10;
   playSound(youWin ? 'game-win' : 'game-lose');
   elements.winnerTitle.textContent = youWin ? 'Victory!' : 'Defeat';
   elements.winnerMessage.innerHTML = `
     <div class="game-result">
       <div class="result-main">${youWin ? 'Your team wins!' : 'Opponents win!'}</div>
-      <div class="result-score"><span class="final-score">${gameState.scores[0]} - ${gameState.scores[1]}</span></div>
+      <div class="result-score"><span class="final-score">${gameState.scores[myTeam]} - ${gameState.scores[1 - myTeam]}</span></div>
       <div class="result-rounds">Completed in ${gameState.roundNumber} rounds</div>
     </div>
   `;
@@ -629,12 +717,16 @@ function endGame() {
 }
 
 function startNextRound() {
+  resetGameFlow();
   elements.roundModal.classList.add('hidden');
   gameState.roundNumber++;
   gameState.tricks = [0, 0];
   gameState.currentTrick = [];
   gameState.leadSuit = null;
   gameState.trump = null;
+  gameState.playSequence = 0;
+  gameState.phase = 'trump';
+  gameState.isPlayerTurn = false;
   updateTricksDisplay();
   updateRoundDisplay();
   elements.trumpDisplay.textContent = '—';
@@ -649,12 +741,13 @@ function startNextRound() {
       hands: gameState.hands,
       trumpChooser: gameState.trumpChooser,
       roundNumber: gameState.roundNumber,
-      scores: gameState.scores
+      scores: [...gameState.scores],
+      playerNames: gameState.playerNames
     });
   }
 
   renderHands();
-  setTimeout(() => selectTrump(), 800);
+  scheduleGameFlow(() => selectTrump(), 800);
 }
 
 function updateRoundDisplay() {
@@ -662,8 +755,9 @@ function updateRoundDisplay() {
 }
 
 function updateScoreBars() {
-  const pct1 = Math.min((gameState.scores[0] / 10) * 100, 100) + '%';
-  const pct2 = Math.min((gameState.scores[1] / 10) * 100, 100) + '%';
+  const myTeam = gameState.myPlayerIndex % 2;
+  const pct1 = Math.min((gameState.scores[myTeam] / 10) * 100, 100) + '%';
+  const pct2 = Math.min((gameState.scores[1 - myTeam] / 10) * 100, 100) + '%';
   elements.team1Panel.style.setProperty('--score-pct', pct1);
   elements.team2Panel.style.setProperty('--score-pct', pct2);
 }
@@ -678,6 +772,7 @@ function showFightOverlay() {
 
 // === Trump ===
 function selectTrump() {
+  if (!gameState.gameStarted || gameState.phase !== 'trump' || gameState.trump) return;
   const tc = gameState.trumpChooser;
   if (tc === gameState.myPlayerIndex) {
     showTrumpModal();
@@ -690,9 +785,9 @@ function selectTrump() {
     applyTrump(best, tc);
     showMessage(`${gameState.playerNames[tc]} chose ${SUIT_SYMBOLS[best]} as trump`);
     if (gameState.mode === 'host') {
-      mp.channel.publish('trump-selected', { suit: best, playerIndex: tc });
+      mp.channel.publish('trump-selected', { suit: best, playerIndex: tc, roundNumber: gameState.roundNumber });
     }
-    setTimeout(() => startPlay(), 1500);
+    scheduleGameFlow(() => startPlay(), 1500);
   }
   // else: guest waiting for trump-selected message from host
 }
@@ -721,7 +816,15 @@ function applyTrump(suit) {
 }
 
 function startPlay() {
+  if (gameState.phase === 'playing') return;
+  if (gameState.mode === 'host') {
+    mp.channel.publish('play-started', {
+      roundNumber: gameState.roundNumber,
+      currentPlayer: gameState.trumpChooser
+    });
+  }
   showFightOverlay();
+  gameState.phase = 'playing';
   gameState.currentPlayer = gameState.trumpChooser;
   const cp = gameState.currentPlayer;
 
@@ -731,12 +834,13 @@ function startPlay() {
     elements.currentTurn.classList.remove('hidden');
     updatePlayableCards();
   } else if (gameState.isBot[cp] && gameState.mode !== 'guest') {
-    setTimeout(() => {
+    scheduleGameFlow(() => {
+      if (gameState.phase !== 'playing' || gameState.currentPlayer !== cp) return;
       const played = botPlayCard(cp);
       if (played && gameState.mode === 'host') {
-        mp.channel.publish('card-play', { suit: played.suit, rank: played.rank, playerIndex: cp });
+        publishCardPlay(played, cp);
       }
-      setTimeout(() => nextTurn(), 400);
+      nextTurn();
     }, 500);
   }
   // else: human guest leads — wait
@@ -751,6 +855,7 @@ function showMessage(text) {
 
 // === Single Player Start ===
 function startSinglePlayer() {
+  resetGameFlow();
   gameState.mode = 'single';
   gameState.myPlayerIndex = 0;
   gameState.isBot = [false, true, true, true];
@@ -761,20 +866,18 @@ function startSinglePlayer() {
   gameState.roundNumber = 1;
   gameState.trumpChooser = Math.floor(Math.random() * 4);
   gameState.gameStarted = true;
+  gameState.playSequence = 0;
+  gameState.phase = 'trump';
 
   resetGameUI();
   showScreen(elements.gameScreen);
   dealCards();
   renderHands();
-  setTimeout(() => selectTrump(), 1000);
+  scheduleGameFlow(() => selectTrump(), 1000);
 }
 
 function resetGameUI() {
-  elements.team1Score.textContent = '0';
-  elements.team2Score.textContent = '0';
-  gameState.scores = [0, 0];
-  updateScoreBars();
-  updateTricksDisplay();
+  updateTeamDisplay();
   updateRoundDisplay();
   elements.trumpDisplay.textContent = '—';
   elements.trumpDisplay.className = 'trump-display';
@@ -784,7 +887,9 @@ function resetGameUI() {
 }
 
 function resetToMenu() {
+  resetGameFlow();
   gameState.gameStarted = false;
+  gameState.phase = 'idle';
   elements.gameMenuModal.classList.add('hidden');
   elements.winnerModal.classList.add('hidden');
   elements.roundModal.classList.add('hidden');
@@ -828,6 +933,7 @@ function disconnectAbly() {
   mp.seatAssignments = {};
   mp.clientNames = {};
   mp.selectedSeat = null;
+  mp.hostId = null;
 }
 
 function setConnectionStatus(status) {
@@ -855,10 +961,11 @@ async function createRoom() {
   mp.seatAssignments = { [mp.playerId]: 0 };
   mp.clientNames    = { [mp.playerId]: myName };
   mp.selectedSeat   = null;
+  mp.hostId         = mp.playerId;
 
   mp.channel = mp.client.channels.get(`omi-${code}`);
-  mp.channel.subscribe('card-play', onRemoteCardPlay);
-  mp.channel.subscribe('trump-selected', onRemoteTrumpSelected);
+  mp.channel.subscribe('play-request', onPlayRequest);
+  mp.channel.subscribe('trump-request', onTrumpRequest);
   mp.channel.presence.subscribe('enter', onPresenceEnter);
   mp.channel.presence.subscribe('leave', onPresenceLeave);
 
@@ -875,12 +982,20 @@ async function joinRoom(code) {
 
   mp.channel = mp.client.channels.get(`omi-${code}`);
   const members = await mp.channel.presence.get();
+  const hostMember = members.find(m => m.data.index === 0 && m.data.roomSize);
+  if (!hostMember) {
+    showMessage('Room not found');
+    disconnectAbly();
+    setConnectionStatus(null);
+    return;
+  }
+  const roomSize = hostMember.data.roomSize;
   const taken = members.map(m => m.data.index);
 
   // Find next available slot
   let myIndex = 1;
-  while (taken.includes(myIndex) && myIndex < 4) myIndex++;
-  if (myIndex >= 4) { showMessage('Room is full!'); disconnectAbly(); setConnectionStatus(null); return; }
+  while (taken.includes(myIndex) && myIndex < roomSize) myIndex++;
+  if (myIndex >= roomSize) { showMessage('Room is full!'); disconnectAbly(); setConnectionStatus(null); return; }
 
   const myName = getPlayerName();
   savePlayerName(myName);
@@ -891,13 +1006,18 @@ async function joinRoom(code) {
   gameState.roomCode = code;
   gameState.mode = 'guest';
   gameState.myPlayerIndex = myIndex;
-  gameState.roomSize = mp.pendingRoomSize;
+  gameState.roomSize = roomSize;
 
   mp.channel.subscribe('game-start', onGameStart);
   mp.channel.subscribe('card-play', onRemoteCardPlay);
   mp.channel.subscribe('trump-selected', onRemoteTrumpSelected);
   mp.channel.subscribe('round-start', onRoundStart);
   mp.channel.subscribe('seat-swap', onSeatSwap);
+  mp.channel.subscribe('lobby-state', onLobbyState);
+  mp.channel.subscribe('trick-resolved', onTrickResolved);
+  mp.channel.subscribe('round-ended', onRoundEnded);
+  mp.channel.subscribe('play-rejected', onPlayRejected);
+  mp.channel.subscribe('play-started', onPlayStarted);
   mp.channel.presence.subscribe('enter', onPresenceEnter);
   mp.channel.presence.subscribe('leave', onPresenceLeave);
 
@@ -905,8 +1025,7 @@ async function joinRoom(code) {
   setConnectionStatus('connected');
 
   // Determine size from existing members if host already set roomSize
-  const hostMember = members.find(m => m.data.index === 0);
-  const roomSize = (hostMember && hostMember.data.roomSize) || mp.pendingRoomSize;
+  mp.hostId = hostMember?.clientId || null;
 
   showWaitingRoom(code, roomSize);
   members.forEach(m => updateSeatSlot(m.data.index, m.data.name, true));
@@ -1008,10 +1127,12 @@ function swapSeats(seatA, seatB) {
   if (clientAtB) mp.seatAssignments[clientAtB] = seatA;
 
   mp.channel.publish('seat-swap', { seatA, seatB });
+  publishLobbyState();
 }
 
 function onSeatSwap(msg) {
   if (msg.clientId === mp.playerId) return;
+  if (mp.hostId && msg.clientId !== mp.hostId) return;
   const { seatA, seatB } = msg.data;
   const slotA = document.getElementById(`seat-${seatA}`);
   const slotB = document.getElementById(`seat-${seatB}`);
@@ -1050,9 +1171,18 @@ function onPresenceEnter(member) {
   if (member.clientId === mp.playerId) return;
   mp.clientNames[member.clientId] = member.data.name;
   if (gameState.mode === 'host') {
-    mp.seatAssignments[member.clientId] = member.data.index;
+    const occupied = new Set(Object.values(mp.seatAssignments));
+    const requested = Number(member.data.index);
+    const seat = requested >= 0 && requested < gameState.roomSize && !occupied.has(requested)
+      ? requested
+      : [0, 1, 2, 3].find(i => i < gameState.roomSize && !occupied.has(i));
+    if (seat === undefined) return;
+    mp.seatAssignments[member.clientId] = seat;
+    updateSeatSlot(seat, member.data.name, true);
+    publishLobbyState();
+  } else {
+    updateSeatSlot(member.data.index, member.data.name, true);
   }
-  updateSeatSlot(member.data.index, member.data.name, true);
   showMessage(`${member.data.name} joined!`);
 }
 
@@ -1062,6 +1192,7 @@ function onPresenceLeave(member) {
     delete mp.seatAssignments[member.clientId];
     delete mp.clientNames[member.clientId];
     if (seat !== undefined) updateSeatSlot(seat, 'Bot', false);
+    publishLobbyState();
   } else {
     // Guest: find the slot showing this player's name
     for (let i = 0; i < 4; i++) {
@@ -1074,8 +1205,36 @@ function onPresenceLeave(member) {
   }
 }
 
+function publishLobbyState() {
+  if (gameState.mode !== 'host' || !mp.channel) return;
+  mp.channel.publish('lobby-state', {
+    seatAssignments: mp.seatAssignments,
+    clientNames: mp.clientNames,
+    roomSize: gameState.roomSize,
+    hostId: mp.playerId
+  });
+}
+
+function onLobbyState(msg) {
+  if (gameState.mode !== 'guest') return;
+  if (mp.hostId && msg.clientId !== mp.hostId) return;
+  const d = msg.data;
+  mp.hostId = d.hostId || msg.clientId;
+  mp.seatAssignments = { ...d.seatAssignments };
+  mp.clientNames = { ...d.clientNames };
+  gameState.roomSize = d.roomSize || gameState.roomSize;
+  if (mp.seatAssignments[mp.playerId] !== undefined) {
+    gameState.myPlayerIndex = mp.seatAssignments[mp.playerId];
+  }
+  buildTeamGrid(false);
+  for (const [clientId, seat] of Object.entries(mp.seatAssignments)) {
+    updateSeatSlot(seat, mp.clientNames[clientId] || 'Player', true);
+  }
+}
+
 // === Start Multiplayer Game (Host) ===
 function startMultiplayerGame() {
+  resetGameFlow();
   // Build isBot and playerNames from seatAssignments
   const humanSeats = new Set(Object.values(mp.seatAssignments));
   const fallback = ['South', 'West', 'North', 'East'];
@@ -1094,6 +1253,8 @@ function startMultiplayerGame() {
   gameState.roundNumber = 1;
   gameState.trumpChooser = Math.floor(Math.random() * 4);
   gameState.gameStarted = true;
+  gameState.playSequence = 0;
+  gameState.phase = 'trump';
 
   dealCards();
 
@@ -1103,6 +1264,7 @@ function startMultiplayerGame() {
     isBot: gameState.isBot,
     playerNames: gameState.playerNames,
     seatAssignments: mp.seatAssignments,
+    hostId: mp.playerId,
     scores: [0, 0],
     roundNumber: 1
   });
@@ -1115,12 +1277,16 @@ function beginGame() {
   resetGameUI();
   showScreen(elements.gameScreen);
   renderHands();
-  setTimeout(() => selectTrump(), 1000);
+  updateTeamDisplay();
+  scheduleGameFlow(() => selectTrump(), 1000);
 }
 
 // === Remote Event Handlers ===
 function onGameStart(msg) {
+  if (mp.hostId && msg.clientId !== mp.hostId) return;
   const d = msg.data;
+  resetGameFlow();
+  mp.hostId = d.hostId || msg.clientId;
 
   // Resolve guest's final seat from host's seatAssignments
   if (d.seatAssignments && d.seatAssignments[mp.playerId] !== undefined) {
@@ -1140,26 +1306,32 @@ function onGameStart(msg) {
   gameState.trumpPreviewCards = gameState.hands[gameState.myPlayerIndex].slice(0, 4);
   gameState.currentPlayer = gameState.trumpChooser;
   gameState.gameStarted = true;
+  gameState.playSequence = 0;
+  gameState.phase = 'trump';
   beginGame();
 }
 
 function onRoundStart(msg) {
+  if (mp.hostId && msg.clientId !== mp.hostId) return;
   const d = msg.data;
+  if (d.roundNumber <= gameState.roundNumber) return;
+  resetGameFlow();
   gameState.hands = d.hands;
   gameState.trumpChooser = d.trumpChooser;
   gameState.roundNumber = d.roundNumber;
   if (d.scores) {
     gameState.scores = d.scores;
-    elements.team1Score.textContent = gameState.scores[0];
-    elements.team2Score.textContent = gameState.scores[1];
-    updateScoreBars();
   }
+  if (d.playerNames) gameState.playerNames = d.playerNames;
   gameState.tricks = [0, 0];
   gameState.currentTrick = [];
   gameState.leadSuit = null;
   gameState.trump = null;
   gameState.trumpPreviewCards = gameState.hands[gameState.myPlayerIndex].slice(0, 4);
   gameState.currentPlayer = gameState.trumpChooser;
+  gameState.playSequence = 0;
+  gameState.phase = 'trump';
+  gameState.isPlayerTurn = false;
 
   elements.roundModal.classList.add('hidden');
   elements.btnNextRound.textContent = 'Next Round';
@@ -1173,51 +1345,150 @@ function onRoundStart(msg) {
   elements.playedCards.innerHTML = '';
 
   renderHands();
-  setTimeout(() => selectTrump(), 800);
+  updateTeamDisplay();
+  scheduleGameFlow(() => selectTrump(), 800);
+}
+
+function isLegalPlay(playerIndex, suit, rank) {
+  if (gameState.phase !== 'playing' || gameState.currentPlayer !== playerIndex) return false;
+  const hand = gameState.hands[playerIndex];
+  const card = hand?.find(c => c.suit === suit && c.rank === rank);
+  if (!card) return false;
+  return !gameState.leadSuit || card.suit === gameState.leadSuit
+    || !hand.some(c => c.suit === gameState.leadSuit);
+}
+
+function onPlayRequest(msg) {
+  if (gameState.mode !== 'host') return;
+  const { suit, rank, playerIndex, roundNumber } = msg.data;
+  if (roundNumber !== gameState.roundNumber
+      || mp.seatAssignments[msg.clientId] !== playerIndex
+      || !isLegalPlay(playerIndex, suit, rank)) {
+    mp.channel.publish('play-rejected', {
+      clientId: msg.clientId,
+      roundNumber: gameState.roundNumber,
+      currentPlayer: gameState.currentPlayer
+    });
+    return;
+  }
+  const hand = gameState.hands[playerIndex];
+  const index = hand.findIndex(c => c.suit === suit && c.rank === rank);
+  const [card] = hand.splice(index, 1);
+  addCardToTrick(card, playerIndex);
+  updateBotHand(playerIndex);
+  playSound('play');
+  publishCardPlay(card, playerIndex);
+  nextTurn();
+}
+
+function onPlayRejected(msg) {
+  if (msg.data.clientId !== mp.playerId || msg.data.roundNumber !== gameState.roundNumber) return;
+  if (msg.data.currentPlayer === gameState.myPlayerIndex && gameState.phase === 'playing') {
+    gameState.isPlayerTurn = true;
+    elements.currentTurn.textContent = 'Your turn';
+    elements.currentTurn.classList.remove('hidden');
+    updatePlayableCards();
+  }
 }
 
 function onRemoteCardPlay(msg) {
-  if (msg.clientId === mp.playerId) return;
-
-  const { suit, rank, playerIndex } = msg.data;
+  if (gameState.mode !== 'guest' || (mp.hostId && msg.clientId !== mp.hostId)) return;
+  const { suit, rank, playerIndex, roundNumber, playSequence } = msg.data;
+  if (roundNumber !== gameState.roundNumber || playSequence <= gameState.playSequence) return;
+  gameState.playSequence = playSequence;
   const card = { suit, rank };
-
   const hand = gameState.hands[playerIndex];
   if (hand) {
     const i = hand.findIndex(c => c.suit === suit && c.rank === rank);
     if (i > -1) hand.splice(i, 1);
   }
-
   addCardToTrick(card, playerIndex);
-  if (playerIndex !== gameState.myPlayerIndex) updateBotHand(playerIndex);
+  if (playerIndex === gameState.myPlayerIndex) renderPlayerHand();
+  else updateBotHand(playerIndex);
+  playSound('play');
 
-  if (gameState.mode === 'host') {
-    // Guest played — host advances game
-    setTimeout(() => nextTurn(), 600);
+  if (gameState.currentTrick.length === 4) {
+    gameState.phase = 'resolving';
+    gameState.isPlayerTurn = false;
+    elements.currentTurn.classList.add('hidden');
+    updatePlayableCards();
+    const winner = getCurrentWinner();
+    const rel = (winner.playerIndex - gameState.myPlayerIndex + 4) % 4;
+    elements.playedCards.classList.add(['fly-south', 'fly-west', 'fly-north', 'fly-east'][rel]);
   } else {
-    // Guest: received card from host/another player
-    if (gameState.currentTrick.length === 4) {
-      // No extra delay — matches host's getTrickDelay() timing in resolveTrick
-      resolveTrick();
-    } else {
-      gameState.currentPlayer = (playerIndex + 1) % 4;
-      if (gameState.currentPlayer === gameState.myPlayerIndex) {
-        gameState.isPlayerTurn = true;
-        elements.currentTurn.textContent = 'Your turn';
-        elements.currentTurn.classList.remove('hidden');
-        updatePlayableCards();
-        playSound('your-turn');
-      }
+    gameState.currentPlayer = (playerIndex + 1) % 4;
+    if (gameState.currentPlayer === gameState.myPlayerIndex) {
+      gameState.isPlayerTurn = true;
+      elements.currentTurn.textContent = 'Your turn';
+      elements.currentTurn.classList.remove('hidden');
+      updatePlayableCards();
+      playSound('your-turn');
     }
   }
 }
 
+function onTrickResolved(msg) {
+  if (gameState.mode !== 'guest' || (mp.hostId && msg.clientId !== mp.hostId)) return;
+  const d = msg.data;
+  if (d.roundNumber !== gameState.roundNumber) return;
+  gameState.tricks = [...d.tricks];
+  gameState.currentTrick = [];
+  gameState.leadSuit = null;
+  gameState.currentPlayer = d.nextPlayer;
+  gameState.phase = 'playing';
+  elements.playedCards.innerHTML = '';
+  elements.playedCards.classList.remove('fly-south', 'fly-west', 'fly-north', 'fly-east');
+  updateTricksDisplay();
+  if (d.nextPlayer === gameState.myPlayerIndex) {
+    gameState.isPlayerTurn = true;
+    elements.currentTurn.textContent = 'Your turn to lead';
+    elements.currentTurn.classList.remove('hidden');
+    updatePlayableCards();
+    playSound('your-turn');
+  }
+}
+
+function onRoundEnded(msg) {
+  if (gameState.mode !== 'guest' || (mp.hostId && msg.clientId !== mp.hostId)) return;
+  const d = msg.data;
+  if (d.roundNumber !== gameState.roundNumber) return;
+  gameState.tricks = [...d.tricks];
+  gameState.scores = [...d.scores];
+  gameState.currentTrick = [];
+  gameState.leadSuit = null;
+  gameState.phase = 'round-end';
+  gameState.isPlayerTurn = false;
+  elements.playedCards.innerHTML = '';
+  elements.playedCards.classList.remove('fly-south', 'fly-west', 'fly-north', 'fly-east');
+  showRoundEnd(gameState.tricks[0], gameState.tricks[1]);
+}
+
+function onTrumpRequest(msg) {
+  if (gameState.mode !== 'host') return;
+  const { suit, playerIndex, roundNumber } = msg.data;
+  if (roundNumber !== gameState.roundNumber
+      || gameState.phase !== 'trump'
+      || playerIndex !== gameState.trumpChooser
+      || mp.seatAssignments[msg.clientId] !== playerIndex
+      || !SUITS.includes(suit)) return;
+  applyTrump(suit);
+  mp.channel.publish('trump-selected', { suit, playerIndex, roundNumber: gameState.roundNumber });
+  showMessage(`${gameState.playerNames[playerIndex]} chose ${SUIT_SYMBOLS[suit]} as trump`);
+  scheduleGameFlow(() => startPlay(), 1500);
+}
+
 function onRemoteTrumpSelected(msg) {
-  if (msg.clientId === mp.playerId) return;
-  const { suit, playerIndex } = msg.data;
+  if (gameState.mode !== 'guest' || (mp.hostId && msg.clientId !== mp.hostId)) return;
+  const { suit, playerIndex, roundNumber } = msg.data;
+  if (roundNumber !== gameState.roundNumber || gameState.phase !== 'trump') return;
   applyTrump(suit);
   showMessage(`${gameState.playerNames[playerIndex]} chose ${SUIT_SYMBOLS[suit]} as trump`);
-  setTimeout(() => startPlay(), 1500);
+}
+
+function onPlayStarted(msg) {
+  if (gameState.mode !== 'guest' || (mp.hostId && msg.clientId !== mp.hostId)) return;
+  if (msg.data.roundNumber !== gameState.roundNumber || gameState.phase !== 'trump') return;
+  startPlay();
 }
 
 // === Event Listeners ===
@@ -1295,14 +1566,28 @@ function initEventListeners() {
   elements.trumpBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const suit = btn.dataset.suit;
+      if (gameState.phase !== 'trump' || gameState.trumpChooser !== gameState.myPlayerIndex) return;
+      if (gameState.mode === 'guest') {
+        elements.trumpModal.classList.add('hidden');
+        mp.channel.publish('trump-request', {
+          suit,
+          playerIndex: gameState.myPlayerIndex,
+          roundNumber: gameState.roundNumber
+        });
+        return;
+      }
       applyTrump(suit);
       playSound('trump');
       showMessage(`You chose ${SUIT_SYMBOLS[suit]} as trump`);
-      if (gameState.mode !== 'single') {
-        mp.channel.publish('trump-selected', { suit, playerIndex: gameState.myPlayerIndex });
+      if (gameState.mode === 'host') {
+        mp.channel.publish('trump-selected', {
+          suit,
+          playerIndex: gameState.myPlayerIndex,
+          roundNumber: gameState.roundNumber
+        });
       }
       const delay = gameState.mode === 'single' ? 800 : 1500;
-      setTimeout(() => startPlay(), delay);
+      scheduleGameFlow(() => startPlay(), delay);
     });
   });
 

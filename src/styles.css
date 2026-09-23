@@ -821,6 +821,16 @@ body::after {
   border: 2px solid var(--border-2);
   white-space: nowrap;
   font-family: var(--font-pixel);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.score-label {
+  max-width: min(34vw, 360px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .player-name.you {
   background: var(--gold);
@@ -1422,10 +1432,9 @@ body::after {
 
   /* Player names */
   .player-name { font-size: 7px; padding: 3px 7px; }
-  /* Hide side names — they'd collide with play area */
   .player-area.east .player-name,
-  .player-area.west .player-name { display: none; }
-  .player-area.east, .player-area.west { gap: 0; }
+  .player-area.west .player-name { display: block; max-width: 64px; }
+  .player-area.east, .player-area.west { gap: 3px; }
 
   .card-rank { font-size: 11px; }
   .card-suit { font-size: 14px; }
