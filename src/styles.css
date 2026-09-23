@@ -63,7 +63,7 @@
 
 /* ===== Reset ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
+html, body { height: 100%; height: 100dvh; overflow: hidden; }
 
 body {
   font-family: var(--font-pixel);
@@ -102,6 +102,7 @@ body::after {
 #app {
   width: 100%;
   height: 100%;
+  height: 100dvh;
   position: relative;
   z-index: 1;
 }
@@ -785,6 +786,48 @@ body::after {
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  opacity: 1;
+  filter: none;
+  transition: opacity 180ms ease, filter 180ms ease;
+  will-change: opacity, filter;
+}
+.score-panel.turn-team-active {
+  box-shadow: inset 0 -3px 0 var(--gold), inset 0 0 24px rgba(255,215,0,0.1);
+}
+.score-panel.turn-team-active .score-label { color: var(--gold); }
+
+/* One unmistakable focal point: only the current player stays crisp. */
+.player-area.turn-inactive {
+  opacity: 0.3;
+  filter: grayscale(0.75) blur(0.7px) brightness(0.65);
+}
+.player-area.turn-active {
+  z-index: 12;
+  opacity: 1;
+  filter: none;
+}
+.player-area.turn-active .player-name {
+  color: #08080f;
+  background: var(--gold);
+  border-color: #fff4a3;
+  box-shadow: 0 0 0 3px rgba(255,215,0,0.22), 0 0 24px rgba(255,215,0,0.65), 4px 4px 0 #000;
+  animation: active-player-pulse 1.15s ease-in-out infinite;
+}
+.player-area.turn-active .player-name::before {
+  content: '▶';
+  display: inline-block;
+  margin-right: 7px;
+  font-size: 0.8em;
+}
+.player-area.turn-active .card {
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgba(255,215,0,0.28);
+}
+.player-area.turn-inactive .player-hand.waiting .card.disabled { opacity: 1; }
+
+@keyframes active-player-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(255,215,0,0.18), 0 0 13px rgba(255,215,0,0.42), 3px 3px 0 #000; }
+  50%      { box-shadow: 0 0 0 4px rgba(255,215,0,0.3), 0 0 28px rgba(255,215,0,0.78), 3px 3px 0 #000; }
 }
 
 .player-area.north {
@@ -1096,7 +1139,13 @@ body::after {
   box-shadow: 4px 4px 0 #000;
   font-family: var(--font-pixel);
   animation: turn-blink 0.7s steps(1) infinite;
+  border: 2px solid rgba(255,255,255,0.65);
+  max-width: min(82vw, 360px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.current-turn[data-relation="partner"] { background: var(--p1-bright); }
+.current-turn[data-relation="opponent"] { background: var(--p2-bright); color: #fff; }
 
 @keyframes turn-blink {
   0%, 55%  { background: var(--gold);   color: #000; }
@@ -1413,39 +1462,47 @@ body::after {
 
 /* ===== Responsive — 480px ===== */
 @media (max-width: 480px) {
-  :root { --card-width: 44px; --card-height: 64px; }
+  :root { --card-width: 43px; --card-height: 63px; }
 
   .game-title { font-size: 24px; letter-spacing: 5px; }
   .menu-container { padding: 30px 18px 26px; }
 
   /* Scoreboard: compact single row */
-  .scoreboard { border-bottom: 3px solid var(--gold); }
-  .score-panel { flex: 1 1 0; padding: 5px 6px 9px; gap: 2px; }
-  .score-label { font-size: 6px; letter-spacing: 1px; }
-  .score-value { font-size: 20px; }
-  .score-tricks { font-size: 6px; }
-  .status-cell { padding: 6px 8px; gap: 2px; }
+  .scoreboard {
+    border-bottom: 3px solid var(--gold);
+    min-height: 62px;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .score-panel { flex: 1 1 0; min-width: 0; padding: 5px 4px 8px; gap: 3px; }
+  .score-label { width: 100%; max-width: 34vw; font-size: 5px; letter-spacing: 0.5px; line-height: 1.35; text-align: center; }
+  .score-value { font-size: 18px; }
+  .score-tricks { font-size: 6px; white-space: nowrap; }
+  .game-status { flex: 0 0 auto; }
+  .status-cell { padding: 5px 7px; gap: 3px; }
   .status-sep { height: 22px; }
   .status-label { font-size: 5px; letter-spacing: 1px; }
   .round-value { font-size: 13px; }
   .trump-display { font-size: 16px; }
 
   /* Player names */
-  .player-name { font-size: 7px; padding: 3px 7px; }
+  .player-name { max-width: 92px; font-size: 7px; padding: 4px 7px; }
   .player-area.east .player-name,
   .player-area.west .player-name { display: block; max-width: 64px; }
   .player-area.east, .player-area.west { gap: 3px; }
+  .player-area.turn-inactive { opacity: 0.34; filter: grayscale(0.65) blur(0.45px) brightness(0.7); }
+  .player-area.turn-active .player-name { box-shadow: 0 0 0 2px rgba(255,215,0,0.3), 0 0 18px rgba(255,215,0,0.72), 3px 3px 0 #000; }
+  .player-area.turn-active .player-name::before { margin-right: 4px; }
 
   .card-rank { font-size: 11px; }
   .card-suit { font-size: 14px; }
 
   /* Tighter card overlaps to keep hands within screen width */
-  .player-hand .card { margin-left: -18px; }
+  .player-hand .card { margin-left: -17px; }
   .bot-hand .card { width: 30px; height: 44px; margin-left: -16px; }
   .hand.vertical .card { width: 34px; height: 50px; margin-top: -30px; }
 
-  .player-area.north { top: 8px; }
-  .player-area.south { bottom: 8px; }
+  .player-area.north { top: 6px; }
+  .player-area.south { bottom: max(7px, env(safe-area-inset-bottom, 0px)); }
   .player-area.east  { right: 4px; }
   .player-area.west  { left: 4px; }
 
@@ -1456,7 +1513,7 @@ body::after {
   .fight-text { font-size: 22px; letter-spacing: 3px; }
   .round-announce { font-size: 13px; letter-spacing: 3px; }
 
-  .current-turn { padding: 6px 12px; font-size: 7px; bottom: -36px; }
+  .current-turn { padding: 7px 10px; font-size: 7px; bottom: -39px; letter-spacing: 1px; }
   .game-menu-btn { top: 6px; right: 6px; width: 32px; height: 32px; }
 
   .message { padding: 10px 16px; font-size: 8px; }
@@ -1464,6 +1521,31 @@ body::after {
   .modal-title { font-size: 12px; }
   .lobby-container, .waiting-container { padding: 18px 16px; }
   .room-code-char { width: 40px; height: 50px; font-size: 20px; }
+}
+
+/* Short phone screens and landscape phones: keep every gameplay element in-frame. */
+@media (max-height: 600px) {
+  :root { --card-width: 42px; --card-height: 60px; }
+  .scoreboard { min-height: 48px; }
+  .score-panel { padding: 3px 5px 6px; gap: 1px; }
+  .score-label, .score-tricks { font-size: 5px; }
+  .score-value { font-size: 16px; }
+  .status-cell { padding: 3px 7px; gap: 2px; }
+  .status-label { font-size: 5px; }
+  .round-value { font-size: 12px; }
+  .trump-display { font-size: 15px; }
+  .player-area.north { top: 4px; }
+  .player-area.south { bottom: 4px; }
+  .player-area.east { right: 3px; }
+  .player-area.west { left: 3px; }
+  .player-name { font-size: 6px; padding: 3px 6px; }
+  .bot-hand .card { width: 29px; height: 42px; margin-left: -15px; }
+  .hand.vertical .card { width: 30px; height: 43px; margin-top: -27px; }
+  .player-hand .card { margin-left: -15px; }
+  .play-area { width: 132px; height: 132px; }
+  .played-card .card { width: 38px; height: 54px; }
+  .current-turn { bottom: -31px; padding: 5px 9px; font-size: 6px; }
+  .game-menu-btn { width: 30px; height: 30px; top: 5px; right: 5px; }
 }
 
 /* ===== Utilities ===== */
@@ -1911,4 +1993,11 @@ html[data-theme="minimal"] .current-turn { border-radius: var(--r-sm); box-shado
   .settings-title { font-size: 12px; }
   .theme-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .option-btn { font-size: 7px; padding: 10px 6px; }
+}
+
+/* Turn focus wins over per-theme nameplate colors. */
+html .player-area.turn-active .player-name {
+  background: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 72%, white);
+  color: #08080f;
 }

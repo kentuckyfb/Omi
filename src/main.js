@@ -209,6 +209,12 @@ function initElements() {
   elements.eastName = document.getElementById('east-name');
   elements.southName = document.getElementById('south-name');
   elements.westName = document.getElementById('west-name');
+  elements.playerAreas = {
+    north: elements.northName.closest('.player-area'),
+    east: elements.eastName.closest('.player-area'),
+    south: elements.southName.closest('.player-area'),
+    west: elements.westName.closest('.player-area')
+  };
 
   elements.trumpModal = document.getElementById('trump-modal');
   elements.trumpInfo = document.getElementById('trump-info');
@@ -329,6 +335,7 @@ function renderHands() {
   });
 
   updatePlayableCards();
+  updateTurnIndicator();
 }
 
 function renderPlayerHand() {
@@ -346,6 +353,7 @@ function renderPlayerHand() {
 
 function updatePlayableCards() {
   const playerCards = elements.southHand.querySelectorAll('.card');
+  elements.southHand.classList.toggle('waiting', !gameState.isPlayerTurn);
   if (!gameState.isPlayerTurn) {
     playerCards.forEach(c => c.classList.add('disabled'));
     return;
@@ -405,6 +413,44 @@ function publishCardPlay(card, playerIndex) {
     roundNumber: gameState.roundNumber,
     playSequence: gameState.playSequence
   });
+}
+
+function updateTurnIndicator() {
+  if (!elements.playerAreas) return;
+  const canShowTurn = gameState.gameStarted
+    && (gameState.phase === 'playing' || gameState.phase === 'trump');
+  const activePlayer = canShowTurn ? gameState.currentPlayer : null;
+  const my = gameState.myPlayerIndex;
+  const positions = ['south', 'west', 'north', 'east'];
+
+  positions.forEach((position, slot) => {
+    const playerIndex = (my + slot) % 4;
+    const area = elements.playerAreas[position];
+    const isActive = playerIndex === activePlayer;
+    area.dataset.playerIndex = playerIndex;
+    area.classList.toggle('turn-active', isActive);
+    area.classList.toggle('turn-inactive', canShowTurn && !isActive);
+    area.setAttribute('aria-current', isActive ? 'true' : 'false');
+  });
+
+  const myTeamIsActive = activePlayer !== null && isTeammate(activePlayer, my);
+  elements.team1Panel.classList.toggle('turn-team-active', canShowTurn && myTeamIsActive);
+  elements.team2Panel.classList.toggle('turn-team-active', canShowTurn && !myTeamIsActive);
+
+  if (!canShowTurn || activePlayer === null) {
+    elements.currentTurn.classList.add('hidden');
+    return;
+  }
+
+  const isMe = activePlayer === my;
+  const relation = isMe ? 'you' : isTeammate(activePlayer, my) ? 'partner' : 'opponent';
+  const playerName = gameState.playerNames[activePlayer] || 'Player';
+  const action = gameState.phase === 'trump' ? 'choosing trump' : 'turn';
+  elements.currentTurn.textContent = isMe
+    ? (gameState.phase === 'trump' ? 'Choose trump' : 'Your turn')
+    : `${playerName} · ${action}`;
+  elements.currentTurn.dataset.relation = relation;
+  elements.currentTurn.classList.remove('hidden');
 }
 
 // === Trick Display ===
@@ -522,9 +568,10 @@ function nextTurn() {
 
   gameState.currentPlayer = (gameState.currentPlayer + 1) % 4;
   const cp = gameState.currentPlayer;
+  gameState.isPlayerTurn = cp === gameState.myPlayerIndex;
+  updateTurnIndicator();
 
   if (cp === gameState.myPlayerIndex) {
-    gameState.isPlayerTurn = true;
     elements.currentTurn.textContent = 'Your turn';
     elements.currentTurn.classList.remove('hidden');
     updatePlayableCards();
@@ -548,6 +595,7 @@ function resolveTrick() {
   gameState.isPlayerTurn = false;
   elements.currentTurn.classList.add('hidden');
   updatePlayableCards();
+  updateTurnIndicator();
 
   const winner = getCurrentWinner();
   const team = winner.playerIndex % 2;
@@ -577,6 +625,8 @@ function resolveTrick() {
 
     gameState.currentPlayer = winnerIndex;
     gameState.phase = 'playing';
+    gameState.isPlayerTurn = winnerIndex === gameState.myPlayerIndex;
+    updateTurnIndicator();
     if (gameState.mode === 'host') {
       mp.channel.publish('trick-resolved', {
         roundNumber: gameState.roundNumber,
@@ -643,6 +693,7 @@ function endRound() {
   gameState.scores[0] += p1;
   gameState.scores[1] += p2;
   gameState.phase = 'round-end';
+  updateTurnIndicator();
   showRoundEnd(t1, t2);
 
   if (gameState.mode === 'host') {
@@ -734,6 +785,7 @@ function startNextRound() {
   elements.trumpInfo.classList.remove('spades', 'hearts', 'diamonds', 'clubs');
   elements.playedCards.innerHTML = '';
   gameState.trumpChooser = (gameState.trumpChooser + 1) % 4;
+  gameState.currentPlayer = gameState.trumpChooser;
   dealCards();
 
   if (gameState.mode === 'host') {
@@ -774,6 +826,8 @@ function showFightOverlay() {
 function selectTrump() {
   if (!gameState.gameStarted || gameState.phase !== 'trump' || gameState.trump) return;
   const tc = gameState.trumpChooser;
+  gameState.currentPlayer = tc;
+  updateTurnIndicator();
   if (tc === gameState.myPlayerIndex) {
     showTrumpModal();
   } else if (gameState.isBot[tc] && gameState.mode !== 'guest') {
@@ -827,9 +881,10 @@ function startPlay() {
   gameState.phase = 'playing';
   gameState.currentPlayer = gameState.trumpChooser;
   const cp = gameState.currentPlayer;
+  gameState.isPlayerTurn = cp === gameState.myPlayerIndex;
+  updateTurnIndicator();
 
   if (cp === gameState.myPlayerIndex) {
-    gameState.isPlayerTurn = true;
     elements.currentTurn.textContent = 'Your turn to lead';
     elements.currentTurn.classList.remove('hidden');
     updatePlayableCards();
@@ -865,6 +920,7 @@ function startSinglePlayer() {
   gameState.tricks = [0, 0];
   gameState.roundNumber = 1;
   gameState.trumpChooser = Math.floor(Math.random() * 4);
+  gameState.currentPlayer = gameState.trumpChooser;
   gameState.gameStarted = true;
   gameState.playSequence = 0;
   gameState.phase = 'trump';
@@ -1252,6 +1308,7 @@ function startMultiplayerGame() {
   gameState.tricks = [0, 0];
   gameState.roundNumber = 1;
   gameState.trumpChooser = Math.floor(Math.random() * 4);
+  gameState.currentPlayer = gameState.trumpChooser;
   gameState.gameStarted = true;
   gameState.playSequence = 0;
   gameState.phase = 'trump';
@@ -1332,6 +1389,7 @@ function onRoundStart(msg) {
   gameState.playSequence = 0;
   gameState.phase = 'trump';
   gameState.isPlayerTurn = false;
+  updateTurnIndicator();
 
   elements.roundModal.classList.add('hidden');
   elements.btnNextRound.textContent = 'Next Round';
@@ -1385,6 +1443,7 @@ function onPlayRejected(msg) {
   if (msg.data.clientId !== mp.playerId || msg.data.roundNumber !== gameState.roundNumber) return;
   if (msg.data.currentPlayer === gameState.myPlayerIndex && gameState.phase === 'playing') {
     gameState.isPlayerTurn = true;
+    updateTurnIndicator();
     elements.currentTurn.textContent = 'Your turn';
     elements.currentTurn.classList.remove('hidden');
     updatePlayableCards();
@@ -1412,13 +1471,15 @@ function onRemoteCardPlay(msg) {
     gameState.isPlayerTurn = false;
     elements.currentTurn.classList.add('hidden');
     updatePlayableCards();
+    updateTurnIndicator();
     const winner = getCurrentWinner();
     const rel = (winner.playerIndex - gameState.myPlayerIndex + 4) % 4;
     elements.playedCards.classList.add(['fly-south', 'fly-west', 'fly-north', 'fly-east'][rel]);
   } else {
     gameState.currentPlayer = (playerIndex + 1) % 4;
+    gameState.isPlayerTurn = gameState.currentPlayer === gameState.myPlayerIndex;
+    updateTurnIndicator();
     if (gameState.currentPlayer === gameState.myPlayerIndex) {
-      gameState.isPlayerTurn = true;
       elements.currentTurn.textContent = 'Your turn';
       elements.currentTurn.classList.remove('hidden');
       updatePlayableCards();
@@ -1436,11 +1497,12 @@ function onTrickResolved(msg) {
   gameState.leadSuit = null;
   gameState.currentPlayer = d.nextPlayer;
   gameState.phase = 'playing';
+  gameState.isPlayerTurn = d.nextPlayer === gameState.myPlayerIndex;
   elements.playedCards.innerHTML = '';
   elements.playedCards.classList.remove('fly-south', 'fly-west', 'fly-north', 'fly-east');
   updateTricksDisplay();
+  updateTurnIndicator();
   if (d.nextPlayer === gameState.myPlayerIndex) {
-    gameState.isPlayerTurn = true;
     elements.currentTurn.textContent = 'Your turn to lead';
     elements.currentTurn.classList.remove('hidden');
     updatePlayableCards();
@@ -1458,6 +1520,7 @@ function onRoundEnded(msg) {
   gameState.leadSuit = null;
   gameState.phase = 'round-end';
   gameState.isPlayerTurn = false;
+  updateTurnIndicator();
   elements.playedCards.innerHTML = '';
   elements.playedCards.classList.remove('fly-south', 'fly-west', 'fly-north', 'fly-east');
   showRoundEnd(gameState.tricks[0], gameState.tricks[1]);
