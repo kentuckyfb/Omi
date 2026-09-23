@@ -905,11 +905,13 @@ body::after {
 .player-hand .card {
   margin-left: -6px;
   cursor: pointer;
-  transition: transform 80ms steps(3), box-shadow 80ms steps(3);
+  transform: translate3d(0, 0, 0);
+  transition: transform 180ms cubic-bezier(0.2, 0.75, 0.25, 1), box-shadow 180ms ease, opacity 180ms ease, filter 180ms ease;
+  will-change: transform;
 }
 .player-hand .card:first-child { margin-left: 0; }
-.player-hand .card:hover {
-  transform: translateY(-20px);
+.player-area.turn-active .player-hand .card:not(.disabled):hover {
+  transform: translate3d(0, -14px, 0);
   z-index: 100;
   box-shadow: 4px 4px 0 #000, 0 0 18px rgba(255,215,0,0.45);
 }
@@ -918,7 +920,8 @@ body::after {
   cursor: not-allowed;
   filter: grayscale(1);
 }
-.player-hand .card.disabled:hover { transform: none; box-shadow: none; }
+.player-hand .card.disabled:hover,
+.player-area.turn-inactive .player-hand .card { transform: translate3d(0, 0, 0); box-shadow: none; }
 
 /* Card base */
 .card {
@@ -1068,10 +1071,10 @@ body::after {
   100%{ transform: translateX(300px) scale(0.45); opacity: 0; }
 }
 
-.played-cards.fly-south { animation: trick-fly-south 0.54s forwards; }
-.played-cards.fly-north { animation: trick-fly-north 0.54s forwards; }
-.played-cards.fly-west  { animation: trick-fly-west  0.54s forwards; }
-.played-cards.fly-east  { animation: trick-fly-east  0.54s forwards; }
+.played-cards.fly-south { animation: trick-fly-south 0.68s cubic-bezier(0.32, 0, 0.22, 1) forwards; }
+.played-cards.fly-north { animation: trick-fly-north 0.68s cubic-bezier(0.32, 0, 0.22, 1) forwards; }
+.played-cards.fly-west  { animation: trick-fly-west  0.68s cubic-bezier(0.32, 0, 0.22, 1) forwards; }
+.played-cards.fly-east  { animation: trick-fly-east  0.68s cubic-bezier(0.32, 0, 0.22, 1) forwards; }
 
 /* ===== FIGHT! Overlay ===== */
 .fight-overlay {
@@ -1138,7 +1141,7 @@ body::after {
   z-index: 10;
   box-shadow: 4px 4px 0 #000;
   font-family: var(--font-pixel);
-  animation: turn-blink 0.7s steps(1) infinite;
+  animation: turn-blink 1.35s ease-in-out infinite;
   border: 2px solid rgba(255,255,255,0.65);
   max-width: min(82vw, 360px);
   overflow: hidden;
@@ -1148,8 +1151,8 @@ body::after {
 .current-turn[data-relation="opponent"] { background: var(--p2-bright); color: #fff; }
 
 @keyframes turn-blink {
-  0%, 55%  { background: var(--gold);   color: #000; }
-  56%, 100%{ background: var(--gold-2); color: #111; }
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.14); }
 }
 
 /* ===== Game Menu Button ===== */
@@ -1408,17 +1411,17 @@ body::after {
 
 /* ===== Animations ===== */
 @keyframes dealCard {
-  from { opacity: 0; transform: translateY(-36px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translate3d(0, 7px, 0) scale(0.94); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
-.card.dealing { animation: dealCard 0.28s steps(4) forwards; }
+.card.dealing { animation: dealCard 0.34s cubic-bezier(0.2, 0.72, 0.25, 1) both; }
 
 @keyframes playCard {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(1.1); }
-  100% { transform: scale(1); }
+  0%   { opacity: 0.72; transform: translate3d(0, 10px, 0) scale(0.9); }
+  62%  { opacity: 1; transform: translate3d(0, -2px, 0) scale(1.045); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
-.card.playing { animation: playCard 0.14s steps(2); }
+.card.playing { animation: playCard 0.24s cubic-bezier(0.2, 0.8, 0.25, 1); }
 
 /* Screen flash on round end */
 @keyframes screen-flash {

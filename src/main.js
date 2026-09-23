@@ -301,7 +301,12 @@ function dealCards() {
 function createCardElement(card, faceUp = true, index = 0) {
   const el = document.createElement('div');
   el.className = `card ${faceUp ? 'face-up ' + card.suit : ''} dealing`;
-  el.style.animationDelay = `${index * 0.05}s`;
+  el.style.animationDelay = `${index * 0.035}s`;
+  el.addEventListener('animationend', (event) => {
+    if (event.animationName !== 'dealCard') return;
+    el.classList.remove('dealing');
+    el.style.animationDelay = '';
+  });
   if (faceUp) {
     el.innerHTML = `<div class="card-content"><span class="card-rank">${card.rank}</span><span class="card-suit">${SUIT_SYMBOLS[card.suit]}</span></div>`;
     el.dataset.suit = card.suit;
@@ -462,6 +467,9 @@ function addCardToTrick(card, playerIndex) {
   const cardEl = createCardElement(card, true);
   cardEl.classList.remove('dealing');
   cardEl.classList.add('playing');
+  cardEl.addEventListener('animationend', (event) => {
+    if (event.animationName === 'playCard') cardEl.classList.remove('playing');
+  }, { once: true });
   const wrapper = document.createElement('div');
   wrapper.className = `played-card ${pos}`;
   wrapper.appendChild(cardEl);
@@ -918,6 +926,10 @@ function startSinglePlayer() {
   gameState.playerNames = [myName, 'West', 'North', 'East'];
   gameState.scores = [0, 0];
   gameState.tricks = [0, 0];
+  gameState.currentTrick = [];
+  gameState.leadSuit = null;
+  gameState.trump = null;
+  gameState.isPlayerTurn = false;
   gameState.roundNumber = 1;
   gameState.trumpChooser = Math.floor(Math.random() * 4);
   gameState.currentPlayer = gameState.trumpChooser;
@@ -1306,6 +1318,10 @@ function startMultiplayerGame() {
 
   gameState.scores = [0, 0];
   gameState.tricks = [0, 0];
+  gameState.currentTrick = [];
+  gameState.leadSuit = null;
+  gameState.trump = null;
+  gameState.isPlayerTurn = false;
   gameState.roundNumber = 1;
   gameState.trumpChooser = Math.floor(Math.random() * 4);
   gameState.currentPlayer = gameState.trumpChooser;
